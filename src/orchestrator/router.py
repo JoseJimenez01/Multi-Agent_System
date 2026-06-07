@@ -1,4 +1,4 @@
-from src.agents import ResearchAgent, CodingAgent, AnalysisAgent
+from src.agents import RagAgent, WebResearchAgent, SummarizerAgent, TransactionalAgent
 from src.agents.base_agent import BaseAgent
 from src.database import VectorStore, DatabaseManager
 from src.config import settings
@@ -9,9 +9,10 @@ class Orchestrator:
         self.vector_store = VectorStore()
         self.db = DatabaseManager()
         self.agent_map = {
-            "research": ResearchAgent(),
-            "coding": CodingAgent(),
-            "analysis": AnalysisAgent(),
+            "Rag": RagAgent(),
+            "WebResearch": WebResearchAgent(),
+            "Summarize": SummarizerAgent(),
+            "Transactional": TransactionalAgent(),
             "general": BaseAgent(),
         }
         self.agent_map["general"].name = "general"

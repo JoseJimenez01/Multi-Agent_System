@@ -1,6 +1,7 @@
 from .base_agent import BaseAgent
-from .research_agent import ResearchAgent
-from .coding_agent import CodingAgent
-from .analysis_agent import AnalysisAgent
+from .RagAgent import RagAgent
+from .WebResearchAgent import WebResearchAgent
+from .SummarizerAgent import SummarizerAgent
+from .TransactionalAgent import TransactionalAgent
 
-__all__ = ["BaseAgent", "ResearchAgent", "CodingAgent", "AnalysisAgent"]
+__all__ = ["BaseAgent", "RagAgent", "WebResearchAgent", "SummarizerAgent", "TransactionalAgent"]
