@@ -1,4 +1,4 @@
-from openai import OpenAI
+from anthropic import Anthropic
 from langfuse import Langfuse
 
 from src.config import settings
@@ -10,8 +10,8 @@ class BaseAgent:
     system_prompt: str = "You are a helpful AI assistant."
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
-        self.model = settings.openai_model
+        self.client = Anthropic(api_key=settings.anthropic_api_key)
+        self.model = settings.claude_model_primary  # Claude Sonnet por defecto para orquestador
         self.langfuse = (
             Langfuse(
                 public_key=settings.langfuse_public_key,
@@ -23,22 +23,25 @@ class BaseAgent:
         )
 
     def run(self, prompt: str, context: str | None = None) -> str:
-        messages = [{"role": "system", "content": self._build_system_prompt(context)}]
-        messages.append({"role": "user", "content": prompt})
+        system_prompt = self._build_system_prompt(context)
 
         trace = self.langfuse.trace(name=self.name) if self.langfuse else None
         generation = trace.generation(name="run", model=self.model) if trace else None
 
-        response = self.client.chat.completions.create(
+        response = self.client.messages.create(
             model=self.model,
-            messages=messages,
+            max_tokens=2048,
+            system=system_prompt,
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
         )
 
-        if generation:
-            generation.end(output=response.choices[0].message.content)
+        result_text = response.content[0].text
 
-        return response.choices[0].message.content
+        if generation:
+            generation.end(output=result_text)
+
+        return result_text
 
     def _build_system_prompt(self, context: str | None = None) -> str:
         if context:

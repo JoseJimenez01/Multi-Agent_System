@@ -1,9 +1,14 @@
 from .base_agent import BaseAgent
+from src.config import settings
 
 
 class WebResearchAgent(BaseAgent):
 
     def __init__(self):
+        super().__init__()
+        # Claude Haiku para búsquedas web
+        self.model = settings.claude_model_fast
+
         self.definition = {
             "agent_name": "WebSearch_Agent",
             "description": "Agente especializado en recuperar informacion desde internet cuando sea necesario.",

@@ -1,8 +1,13 @@
 from .base_agent import BaseAgent
+from src.config import settings
 
 class TransactionalAgent(BaseAgent):
 
     def __init__(self):
+        super().__init__()
+        # Claude Haiku para tareas transaccionales
+        self.model = settings.claude_model_fast
+
         self.definition = {
             "agent_name": "Transactional_Agent",
             "description": "Agente especializado en recuperar informacion consultar la base de datos ficticia mediante el MCP Server.",

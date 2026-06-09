@@ -1,9 +1,14 @@
 from .base_agent import BaseAgent
+from src.config import settings
 
 
 class RagAgent(BaseAgent):
         
     def __init__(self):
+        super().__init__()
+        # Claude Haiku para tareas de RAG
+        self.model = settings.claude_model_fast
+        
         self.definition = {
             "agent_name": "Rag_Agent",
             "description": "Agente especializado en recuperar informacion desde los apuntes del curso.",

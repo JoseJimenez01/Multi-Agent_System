@@ -15,11 +15,13 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
 
+    # Anthropic Claude 
+    anthropic_api_key: str = ""
+    claude_model_primary: str = "claude-sonnet-4-6"  
+    claude_model_fast: str = "claude-haiku-4-5"  
+
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
-
-    # Embeddings
     embedding_model: str = "text-embedding-3-small"
     embedding_dimension: int = 1536
 

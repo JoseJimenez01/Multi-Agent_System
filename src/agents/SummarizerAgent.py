@@ -1,9 +1,14 @@
 from .base_agent import BaseAgent
+from src.config import settings
 
 
 class SummarizerAgent(BaseAgent):
 
     def __init__(self):
+        super().__init__()
+        # Claude Haiku para tareas de resumen 
+        self.model = settings.claude_model_fast
+
         self.definition = {
             "agent_name": "Summarizer_Agent",
             "description": "Agente especializado en resumir conversaciones, resultados de búsqueda, respuestas largas o historial de una sesión.",
