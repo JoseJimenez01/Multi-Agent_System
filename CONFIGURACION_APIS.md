@@ -55,6 +55,7 @@ QDRANT_URL=http://localhost:6333
 QDRANT_GRPC_PORT=6334
 
 # Langfuse (observabilidad) — OPCIONAL
+# Ver guía completa: LANGFUSE.md
 LANGFUSE_HOST=http://localhost:3000
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
@@ -123,6 +124,7 @@ Verificar que los agentes específicos usen `claude_model_fast` (Haiku) y no el 
 
 ## Referencias
 
+- [Configuración Langfuse (guía completa)](./LANGFUSE.md)
 - [Documentación Anthropic](https://docs.anthropic.com)
 - [Precios Anthropic](https://www.anthropic.com/pricing)
 - [Documentación OpenAI](https://platform.openai.com/docs/api-reference)
