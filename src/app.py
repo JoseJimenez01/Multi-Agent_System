@@ -9,7 +9,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 
 from src.orchestrator import Orchestrator
-from src.database import DatabaseManager
 
 st.set_page_config(page_title="Multi-Agent System", layout="wide")
 
@@ -34,8 +33,6 @@ def greeting():
 
 @st.cache_resource
 def init_orchestrator():
-    db = DatabaseManager()
-    db.create_tables()
     return Orchestrator()
 
 

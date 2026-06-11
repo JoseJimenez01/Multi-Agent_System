@@ -24,6 +24,66 @@ def extract_text_from_pdf(filepath: Path) -> str:
 
 MONTHS_SP = r"(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)"
 
+INVALID_AUTHOR_TERMS = (
+    "apuntes",
+    "inteligencia artificial",
+    "inteligencia artifical",
+    "ic-6200",
+    "ic6200",
+    "instituto",
+    "escuela",
+    "tecnol",
+    "cartago",
+    "costa rica",
+    "profesor",
+    "curso",
+    "fecha",
+    "resumen",
+    "abstract",
+    "clase",
+    "male female",
+)
+
+
+def _is_valid_author(name: str) -> bool:
+    cleaned = name.strip()
+    if len(cleaned) < 5 or len(cleaned.split()) < 2:
+        return False
+    lower = cleaned.lower()
+    if any(term in lower for term in INVALID_AUTHOR_TERMS):
+        return False
+    if re.fullmatch(r"semana\s+\d+", lower):
+        return False
+    if re.search(r"\d{5,}", cleaned):
+        return False
+    return True
+
+
+def _extract_author(text: str) -> str:
+    header = unicodedata.normalize("NFC", text[:2500]).replace("´", "")
+    patterns = [
+        r"\b(?:1st|2nd|3rd)\b\s+"
+        r"([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+){1,4})"
+        r"(?:\s+Profesor|\s+Escuela|\s+Instituto|\s+Curso|\s+IC-|\n|$)",
+        r"[Ss]emana\s+\d+\s+"
+        r"([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+){1,4})\s*[-–—]",
+        r"([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+){1,4})\s*[-–—]{1,2}\s*\d{7,10}",
+        r"([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+){1,3})\s+[a-z0-9]+@estudiantec\.cr",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, header)
+        if match and _is_valid_author(match.group(1)):
+            return match.group(1).strip()
+    return ""
+
+
+def extract_semana_from_query(text: str) -> str | None:
+    match = re.search(r"(?:semana|week)\s*#?\s*(\d{1,2})\b", text, re.IGNORECASE)
+    if match:
+        return f"Semana {int(match.group(1))}"
+    return None
+
+
 def _parse_header(text: str) -> dict:
     info = {"autor": "", "profesor": "", "fecha_texto": "", "carnet": "", "curso": ""}
 
@@ -47,18 +107,7 @@ def _parse_header(text: str) -> dict:
     if m:
         info["carnet"] = m.group(1).strip()
 
-    skip_prefixes = ("Apuntes", "Profesor", "Curso:", "Fecha:", "Carn", "Escuela", "Tecnol", "Resumen")
-    lines = text.split("\n")
-
-    for line in lines:
-        s = line.strip()
-        if not s or s == "\f":
-            continue
-        parts = s.split()
-        if len(parts) >= 3 and all(p[0].isupper() for p in parts if len(p) > 1):
-            if not any(s.startswith(p) for p in skip_prefixes):
-                info["autor"] = s
-                break
+    info["autor"] = _extract_author(text)
 
     return info
 

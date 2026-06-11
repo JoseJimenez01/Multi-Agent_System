@@ -100,18 +100,27 @@ def check_agents() -> None:
     return True
 
 
-def check_database_config() -> None:
-    """Verifica la configuración de bases de datos"""
+def check_qdrant_config() -> None:
+    """Verifica la configuración de Qdrant"""
+    import importlib.metadata
+
     print("\n" + "="*60)
-    print("VERIFICACIÓN DE BASES DE DATOS")
+    print("VERIFICACIÓN DE QDRANT")
     print("="*60)
-    
-    print(f"PostgreSQL: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'localhost'}")
-    print(f"  → {settings.database_url[:50]}...")
-    
-    print(f"\nQdrant:")
+
+    client_version = importlib.metadata.version("qdrant-client")
+    expected_prefix = ".".join(settings.qdrant_version.split(".")[:2])
+
+    print(f"  → Versión servidor (esperada): {settings.qdrant_version}")
+    print(f"  → qdrant-client (instalado): {client_version}")
     print(f"  → URL: {settings.qdrant_url}")
     print(f"  → gRPC Port: {settings.qdrant_grpc_port}")
+
+    if not client_version.startswith(expected_prefix):
+        print(
+            f"  ⚠️  ADVERTENCIA: qdrant-client {client_version} no coincide con "
+            f"servidor v{settings.qdrant_version}. Ejecuta: pip install -r requirements.txt"
+        )
 
 
 def test_anthropic_connection() -> bool:
@@ -187,7 +196,7 @@ def main() -> None:
     # Verificaciones
     api_keys_ok, issues = check_api_keys()
     check_models()
-    check_database_config()
+    check_qdrant_config()
     agents_ok = check_agents()
     
     # Pruebas de conexión (solo si las APIs están configuradas)

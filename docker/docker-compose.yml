@@ -1,32 +1,36 @@
-services:
-  # =====================
-  # PostgreSQL (datos propios)
-  # =====================
-  postgres:
-    image: postgres:16-alpine
-    container_name: mas-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mas_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mas_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-mas_db}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - mas-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mas_user -d mas_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+x-langfuse-s3: &langfuse-s3
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
 
+x-langfuse-core: &langfuse-core
+  DATABASE_URL: postgresql://${LANGFUSE_POSTGRES_USER:-langfuse_user}:${LANGFUSE_POSTGRES_PASSWORD:-langfuse_pass}@langfuse-postgres:5432/${LANGFUSE_POSTGRES_DB:-langfuse}
+  CLICKHOUSE_URL: http://${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}@langfuse-clickhouse:8123
+  CLICKHOUSE_MIGRATION_URL: clickhouse://${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}@langfuse-clickhouse:9000/default
+  CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+  REDIS_CONNECTION_STRING: redis://langfuse-redis:6379
+  SALT: ${LANGFUSE_SALT}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}
+  TELEMETRY_ENABLED: "false"
+  LANGFUSE_ENABLE_EXPERIMENTAL: "false"
+  <<: *langfuse-s3
+
+services:
   # =====================
   # Qdrant (base vectorial)
   # =====================
   qdrant:
-    image: qdrant/qdrant:v1.12.0
+    image: qdrant/qdrant:v${QDRANT_VERSION:-1.12.0}
     container_name: mas-qdrant
     ports:
       - "${QDRANT_PORT:-6333}:6333"
@@ -43,14 +47,15 @@ services:
 
   # =====================
   # Langfuse (observabilidad LLM)
+  # Configuración persistente: docker/.env
   # =====================
   langfuse-postgres:
     image: postgres:16-alpine
     container_name: mas-langfuse-db
     environment:
-      POSTGRES_USER: langfuse_user
-      POSTGRES_PASSWORD: langfuse_pass
-      POSTGRES_DB: langfuse
+      POSTGRES_USER: ${LANGFUSE_POSTGRES_USER:-langfuse_user}
+      POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD:-langfuse_pass}
+      POSTGRES_DB: ${LANGFUSE_POSTGRES_DB:-langfuse}
     ports:
       - "${LANGFUSE_DB_PORT:-5433}:5432"
     volumes:
@@ -58,7 +63,7 @@ services:
     networks:
       - mas-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U langfuse_user -d langfuse"]
+      test: ["CMD-SHELL", "pg_isready -U ${LANGFUSE_POSTGRES_USER:-langfuse_user} -d ${LANGFUSE_POSTGRES_DB:-langfuse}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -71,6 +76,8 @@ services:
       ZOO_SERVERS: server.1=0.0.0.0:2888:3888;2181
     ports:
       - "${ZOOKEEPER_PORT:-2181}:2181"
+    volumes:
+      - langfuse_zookeeper_data:/data
     networks:
       - mas-network
     healthcheck:
@@ -99,7 +106,7 @@ services:
     networks:
       - mas-network
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--host=127.0.0.1", "--password=clickhouse", "--query=SELECT 1"]
+      test: ["CMD", "clickhouse-client", "--host=127.0.0.1", "--password=${CLICKHOUSE_PASSWORD:-clickhouse}", "--query=SELECT 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -136,8 +143,8 @@ services:
       timeout: 5s
       retries: 5
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
 
   langfuse-createbuckets:
     image: minio/mc:latest
@@ -146,7 +153,7 @@ services:
         condition: service_healthy
     entrypoint: >
       sh -c "
-      mc alias set local http://langfuse-minio:9000 minioadmin minioadmin &&
+      mc alias set local http://langfuse-minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
       mc mb local/langfuse-events --ignore-existing &&
       mc mb local/langfuse-media --ignore-existing &&
       mc mb local/langfuse-exports --ignore-existing &&
@@ -170,30 +177,9 @@ services:
     ports:
       - "${LANGFUSE_PORT:-3000}:3000"
     environment:
-      DATABASE_URL: postgresql://langfuse_user:langfuse_pass@langfuse-postgres:5432/langfuse
-      CLICKHOUSE_URL: http://default:clickhouse@langfuse-clickhouse:8123
-      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@langfuse-clickhouse:9000/default
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: clickhouse
-      REDIS_CONNECTION_STRING: redis://langfuse-redis:6379
-      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-my-secret-key-change-in-prod}
-      SALT: ${LANGFUSE_SALT:-my-salt-key-change-in-prod}
-      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
-      NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
-      TELEMETRY_ENABLED: "false"
-      LANGFUSE_ENABLE_EXPERIMENTAL: "false"
-      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
-      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
-      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
-      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
-      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
-      LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minioadmin
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: minioadmin
-      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      <<: *langfuse-core
+      NEXTAUTH_SECRET: ${LANGFUSE_SECRET}
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
     networks:
       - mas-network
 
@@ -211,33 +197,11 @@ services:
       langfuse-minio:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://langfuse_user:langfuse_pass@langfuse-postgres:5432/langfuse
-      CLICKHOUSE_URL: http://default:clickhouse@langfuse-clickhouse:8123
-      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@langfuse-clickhouse:9000/default
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: clickhouse
-      REDIS_CONNECTION_STRING: redis://langfuse-redis:6379
-      SALT: ${LANGFUSE_SALT:-my-salt-key-change-in-prod}
-      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
-      TELEMETRY_ENABLED: "false"
-      LANGFUSE_ENABLE_EXPERIMENTAL: "false"
-      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
-      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
-      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
-      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
-      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
-      LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minioadmin
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: minioadmin
-      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      <<: *langfuse-core
     networks:
       - mas-network
 
 volumes:
-  postgres_data:
   qdrant_data:
   langfuse_postgres_data:
   langfuse_clickhouse_data:

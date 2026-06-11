@@ -7,10 +7,8 @@ _ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    # PostgreSQL
-    database_url: str = "postgresql://mas_user:mas_pass@localhost:5432/mas_db"
-
     # Qdrant
+    qdrant_version: str = "1.12.0"
     qdrant_url: str = "http://localhost:6333"
     qdrant_grpc_port: int = 6334
 

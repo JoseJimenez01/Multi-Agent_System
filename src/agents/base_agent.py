@@ -11,14 +11,53 @@ from src.observability.langfuse_tracing import flush_langfuse, get_langfuse_clie
 class BaseAgent:
     name: str = "base"
     description: str = "Base agent"
-    system_prompt: str = "You are a helpful AI assistant."
-
-    # Creo que es necesario agregar el self.definition aqui, porque lo instancia en el router.py
-    
 
     def __init__(self):
         self.client = Anthropic(api_key=settings.anthropic_api_key)
         self.model = settings.claude_model_primary
+        self.definition = {
+            "agent_name": "General_Agent",
+            "description": (
+                "Asistente IA versátil. Responde cualquier consulta "
+                "de forma clara, precisa y en el mismo idioma de la pregunta."
+            ),
+            "role": "assistant",
+            "skills": ["general_qa", "reasoning", "multilingual_response"],
+            "allowed_tools": [],
+            "expected inputs": "",
+            "expected outputs": "",
+            "restrictions": [],
+            "example of a call": "",
+            "language": "Mismo idioma que usa el prompt del usuario.",
+        }
+
+    @staticmethod
+    def definition_to_system_prompt(definition: dict) -> str:
+        lines = []
+
+        if agent_name := definition.get("agent_name"):
+            lines.append(f"Eres {agent_name}.")
+        if desc := definition.get("description"):
+            lines.append(desc)
+        if role := definition.get("role"):
+            lines.append(f"Tu rol es: {role}.")
+
+        if skills := definition.get("skills"):
+            lines.append("Habilidades:")
+            lines.extend(f"- {skill}" for skill in skills)
+
+        if tools := definition.get("allowed_tools"):
+            lines.append("Herramientas permitidas:")
+            lines.extend(f"- {tool}" for tool in tools)
+
+        if restrictions := definition.get("restrictions"):
+            lines.append("Restricciones:")
+            lines.extend(f"- {restriction}" for restriction in restrictions)
+
+        if language := definition.get("language"):
+            lines.append(f"Idioma: {language}")
+
+        return "\n".join(lines)
 
     @traced(as_type="agent", capture_input=False, capture_output=False)
     def run(self, prompt: str, context: str | None = None) -> str:
@@ -67,6 +106,7 @@ class BaseAgent:
         return response.content[0].text, response.usage
 
     def _build_system_prompt(self, context: str | None = None) -> str:
+        prompt = self.definition_to_system_prompt(self.definition)
         if context:
-            return f"{self.system_prompt}\n\nContexto recuperado:\n{context}"
-        return self.system_prompt
+            return f"{prompt}\n\nContexto recuperado:\n{context}"
+        return prompt

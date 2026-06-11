@@ -6,7 +6,10 @@ from src.config import settings
 
 class VectorStore:
     def __init__(self, url: str | None = None):
-        self.client = QdrantClient(url or settings.qdrant_url)
+        self.client = QdrantClient(
+            url=url or settings.qdrant_url,
+            grpc_port=settings.qdrant_grpc_port,
+        )
         self.dimension = settings.embedding_dimension
 
     def ensure_collection(self, collection_name: str, distance: Distance = Distance.COSINE):
@@ -29,12 +32,14 @@ class VectorStore:
         query_vector: list[float],
         limit: int = 5,
         score_threshold: float | None = 0.75,
+        query_filter: models.Filter | None = None,
     ) -> list[models.ScoredPoint]:
         return self.client.search(
             collection_name=collection_name,
             query_vector=query_vector,
             limit=limit,
             score_threshold=score_threshold,
+            query_filter=query_filter,
         )
 
     def delete_collection(self, collection_name: str):
