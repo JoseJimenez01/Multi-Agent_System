@@ -25,6 +25,7 @@ class DatabaseManager:
         self,
         task_type: str,
         input_text: str,
+        session_id: str,
         agent_used: str | None = None,
         status: str = "pending",
         result_text: str | None = None,
@@ -37,6 +38,7 @@ class DatabaseManager:
 
         with self.get_session() as session:
             log = TaskLog(
+                session_id=session_id,
                 task_type=task_type,
                 input_text=input_text,
                 agent_used=agent_used,

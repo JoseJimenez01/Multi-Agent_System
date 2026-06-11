@@ -5,7 +5,7 @@ pydantic-settings>=2.0
 # LLM
 anthropic>=0.25.0
 openai>=1.0.0
-langfuse>=2.0.0
+langfuse>=4.0.0
 
 # Database
 sqlalchemy>=2.0

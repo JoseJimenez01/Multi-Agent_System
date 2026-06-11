@@ -1,4 +1,5 @@
 import sys
+import uuid
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -7,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 
-#from src.orchestrator import Orchestrator
-#from src.database import DatabaseManager
+from src.orchestrator import Orchestrator
+from src.database import DatabaseManager
 
 st.set_page_config(page_title="Multi-Agent System", layout="wide")
 
@@ -31,20 +32,23 @@ def greeting():
     return "Buenas noches"
 
 
-# @st.cache_resource
-# def init_orchestrator():
-#     db = DatabaseManager()
-#     db.create_tables()
-#     return Orchestrator()
+@st.cache_resource
+def init_orchestrator():
+    db = DatabaseManager()
+    db.create_tables()
+    return Orchestrator()
 
 
-#orchestrator = init_orchestrator()
+orchestrator = init_orchestrator()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "conversations" not in st.session_state:
     st.session_state.conversations = []
+
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
 
 left, right = st.columns([1, 2.5], gap="medium")
 
@@ -86,20 +90,20 @@ with right:
                 with st.status("Pensando...", expanded=False) as status:
                     status.write("Clasificando tarea...")
                     status.write("Consultando base vectorial...")
-        #             response = orchestrator.route(prompt)
-        #             status.write("Generando respuesta...")
+                    response = orchestrator.route(prompt, st.session_state.session_id)
+                    status.write("Generando respuesta...")
 
-        #         st.markdown(response["result"])
-        #         st.caption(f"Agente: {response['agent']}")
-        #         if response["context_used"]:
-        #             st.caption(":blue[Usó contexto de base vectorial]")
+                st.markdown(response["result"])
+                st.caption(f"Agente: {response['agent']}")
+                if response["context_used"]:
+                    st.caption(":blue[Usó contexto de base vectorial]")
 
-        # st.session_state.messages.append({
-        #     "role": "assistant",
-        #     "content": response["result"],
-        #     "agent": response["agent"],
-        #     "context_used": response["context_used"],
-        # })
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": response["result"],
+            "agent": response["agent"],
+            "context_used": response["context_used"],
+        })
 
         first_msg = st.session_state.conversations[0]["first_msg"] if st.session_state.conversations else None
         if not first_msg or first_msg != st.session_state.messages[0]["content"]:
