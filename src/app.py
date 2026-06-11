@@ -88,10 +88,9 @@ with right:
         with chat:
             with st.chat_message("assistant"):
                 with st.status("Pensando...", expanded=False) as status:
-                    status.write("Clasificando tarea...")
-                    status.write("Consultando base vectorial...")
+                    status.write("Clasificando tarea con IA...")
                     response = orchestrator.route(prompt, st.session_state.session_id)
-                    status.write("Generando respuesta...")
+                    status.write("Respuesta lista")
 
                 st.markdown(response["result"])
                 st.caption(f"Agente: {response['agent']}")

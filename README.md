@@ -28,3 +28,4 @@ and continue working, the project are going to use the libraries in it.
 To run the app:
 
 streamlit run src/app.py --server.openBrowser true
+streamlit run src/app.py

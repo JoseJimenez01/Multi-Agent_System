@@ -13,6 +13,9 @@ class BaseAgent:
     description: str = "Base agent"
     system_prompt: str = "You are a helpful AI assistant."
 
+    # Creo que es necesario agregar el self.definition aqui, porque lo instancia en el router.py
+    
+
     def __init__(self):
         self.client = Anthropic(api_key=settings.anthropic_api_key)
         self.model = settings.claude_model_primary

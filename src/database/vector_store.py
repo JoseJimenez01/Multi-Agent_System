@@ -9,14 +9,14 @@ class VectorStore:
         self.client = QdrantClient(url or settings.qdrant_url)
         self.dimension = settings.embedding_dimension
 
-    def ensure_collection(self, collection_name: str):
+    def ensure_collection(self, collection_name: str, distance: Distance = Distance.COSINE):
         collections = self.client.get_collections().collections
         if not any(c.name == collection_name for c in collections):
             self.client.create_collection(
                 collection_name=collection_name,
                 vectors_config=VectorParams(
                     size=self.dimension,
-                    distance=Distance.COSINE,
+                    distance=distance,
                 ),
             )
 
