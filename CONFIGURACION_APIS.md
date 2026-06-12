@@ -41,10 +41,10 @@ Crear una nueva clave secreta. Formato: `sk-...`
 Crear el archivo `.env` en la raíz del proyecto:
 
 ```bash
-# Anthropic Claude (LLM principal) — REQUERIDO
+# Anthropic Claude (LLM principal) 
 ANTHROPIC_API_KEY=sk-ant-...
 
-# OpenAI (solo embeddings) — REQUERIDO
+# OpenAI (solo embeddings) 
 OPENAI_API_KEY=sk-...
 
 # PostgreSQL
@@ -54,7 +54,7 @@ DATABASE_URL=postgresql://mas_user:mas_pass@localhost:5432/mas_db
 QDRANT_URL=http://localhost:6333
 QDRANT_GRPC_PORT=6334
 
-# Langfuse (observabilidad) — OPCIONAL
+# Langfuse (observabilidad) 
 # Ver guía completa: LANGFUSE.md
 LANGFUSE_HOST=http://localhost:3000
 LANGFUSE_PUBLIC_KEY=

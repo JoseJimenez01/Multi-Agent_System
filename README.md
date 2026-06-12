@@ -29,3 +29,7 @@ To run the app:
 
 streamlit run src/app.py --server.openBrowser true
 streamlit run src/app.py
+
+
+To export the data
+python -c "from src.preprocess.ingest import export_documents_json; export_documents_json('output.json')"
