@@ -24,7 +24,14 @@ from src.database import VectorStore
 
 from src.config import settings
 
-from src.observability.langfuse_tracing import flush_langfuse, get_langfuse_client, is_tracing_enabled, traced
+from src.observability.langfuse_tracing import (
+    flush_langfuse,
+    get_langfuse_client,
+    is_tracing_enabled,
+    record_current_exception,
+    record_exception,
+    traced,
+)
 
 
 
@@ -114,13 +121,15 @@ class Orchestrator:
 
         )
 
-        with trace_context:
+        try:
 
-            result = self._route_traced(prompt, session_id)
+            with trace_context:
 
+                result = self._route_traced(prompt, session_id)
 
+        finally:
 
-        flush_langfuse()
+            flush_langfuse()
 
         return result
 
@@ -134,15 +143,37 @@ class Orchestrator:
 
         if langfuse is not None:
 
-            langfuse.update_current_span(input={"prompt": prompt})
+            langfuse.update_current_span(
+                input={"prompt": prompt},
+                metadata={"session_id": session_id},
+            )
 
 
 
-        task_type = self._classify_task(prompt)
+        try:
 
-        agent = self._get_agent(task_type)
+            task_type = self._classify_task(prompt)
 
-        result = agent.run(prompt)
+            agent = self._get_agent(task_type)
+
+            if langfuse is not None:
+
+                langfuse.update_current_span(
+                    metadata={
+                        "session_id": session_id,
+                        "task_type": task_type,
+                        "routed_agent": agent.name,
+                    },
+                )
+
+            result = agent.run(prompt)
+
+        except Exception as error:
+
+            record_current_exception(error)
+
+            raise
+
         context_used = getattr(agent, "context_used", False)
 
         response = {"result": result, "agent": agent.name, "context_used": context_used}
@@ -205,31 +236,63 @@ class Orchestrator:
 
         client = Anthropic(api_key=settings.anthropic_api_key)
 
-        response = client.messages.create(
+        model = settings.claude_model_fast
 
-            model=settings.claude_model_fast,
-
-            max_tokens=10,
-
-            system=self._build_classifier_prompt(),
-
-            messages=[{"role": "user", "content": prompt}],
-
-            temperature=0,
-
-        )
-
-        task_type = response.content[0].text.strip().lower()
-
-
+        system_prompt = self._build_classifier_prompt()
 
         langfuse = get_langfuse_client()
 
-        if langfuse is not None:
+        if langfuse is None:
 
-            langfuse.update_current_span(output={"task_type": task_type})
+            response = client.messages.create(
+                model=model,
+                max_tokens=10,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+            )
 
+            task_type = response.content[0].text.strip().lower()
 
+            return task_type if task_type in self.definition["task_types"] else "general"
 
-        return task_type if task_type in self.definition["task_types"] else "general"
+        with langfuse.start_as_current_observation(
+            as_type="generation",
+            name="anthropic-classifier",
+            model=model,
+            input={"system": system_prompt, "user_message": prompt},
+            model_parameters={"temperature": 0, "max_tokens": 10},
+        ) as generation:
+
+            try:
+
+                response = client.messages.create(
+                    model=model,
+                    max_tokens=10,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                )
+
+            except Exception as error:
+
+                record_exception(generation, error)
+
+                raise
+
+            task_type = response.content[0].text.strip().lower()
+
+            generation.update(
+                output=task_type,
+                usage_details={
+                    "input": response.usage.input_tokens,
+                    "output": response.usage.output_tokens,
+                },
+            )
+
+        resolved = task_type if task_type in self.definition["task_types"] else "general"
+
+        langfuse.update_current_span(output={"task_type": resolved})
+
+        return resolved
 

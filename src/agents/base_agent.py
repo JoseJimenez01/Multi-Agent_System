@@ -5,7 +5,13 @@ configure_langfuse_env()
 from anthropic import Anthropic
 
 from src.config import settings
-from src.observability.langfuse_tracing import flush_langfuse, get_langfuse_client, traced
+from src.observability.langfuse_tracing import (
+    flush_langfuse,
+    get_langfuse_client,
+    record_current_exception,
+    record_exception,
+    traced,
+)
 
 
 class BaseAgent:
@@ -59,16 +65,31 @@ class BaseAgent:
 
         return "\n".join(lines)
 
+    @staticmethod
+    def _trace_messages(prompt: str, context: str | None, definition: dict) -> list[dict]:
+        messages = [{"role": "system", "content": BaseAgent.definition_to_system_prompt(definition)}]
+        if context:
+            messages.append({"role": "context", "content": context})
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
     @traced(as_type="agent", capture_input=False, capture_output=False)
     def run(self, prompt: str, context: str | None = None) -> str:
         system_prompt = self._build_system_prompt(context)
         langfuse = get_langfuse_client()
+        trace_messages = self._trace_messages(prompt, context, self.definition)
 
         if langfuse is not None:
             langfuse.update_current_span(
                 name=self.name,
-                input={"prompt": prompt, "has_context": context is not None},
-                metadata={"agent": self.name, "model": self.model},
+                input={"messages": trace_messages},
+                metadata={
+                    "agent": self.name,
+                    "model": self.model,
+                    "allowed_tools": self.definition.get("allowed_tools", []),
+                    "has_context": context is not None,
+                    "context_chars": len(context) if context else 0,
+                },
             )
 
         if langfuse is None:
@@ -79,18 +100,30 @@ class BaseAgent:
             as_type="generation",
             name="anthropic-completion",
             model=self.model,
-            input={"user_message": prompt},
+            input={"messages": trace_messages},
             model_parameters={"temperature": 0.3, "max_tokens": 2048},
         ) as generation:
-            result_text, usage = self._call_llm(system_prompt, prompt)
+            try:
+                result_text, usage = self._call_llm(system_prompt, prompt)
+            except Exception as error:
+                record_exception(generation, error)
+                record_current_exception(error)
+                flush_langfuse()
+                raise
+
+            usage_details = {
+                "input": usage.input_tokens,
+                "output": usage.output_tokens,
+            }
             generation.update(
-                output=result_text,
-                usage_details={
-                    "input": usage.input_tokens,
-                    "output": usage.output_tokens,
+                output={"messages": [{"role": "assistant", "content": result_text}]},
+                usage_details=usage_details,
+            )
+            langfuse.update_current_span(
+                output={
+                    "messages": trace_messages + [{"role": "assistant", "content": result_text}],
                 },
             )
-            langfuse.update_current_span(output={"response": result_text})
 
         flush_langfuse()
         return result_text

@@ -3,6 +3,33 @@ from functools import lru_cache
 from src.config.settings import configure_langfuse_env, get_settings
 
 
+def record_exception(observation, error: Exception) -> None:
+    """Marca una observación de Langfuse con nivel ERROR y el detalle de la excepción."""
+    if observation is None:
+        return
+    try:
+        observation.update(
+            level="ERROR",
+            status_message=f"{type(error).__name__}: {error}",
+        )
+    except Exception:
+        pass
+
+
+def record_current_exception(error: Exception) -> None:
+    """Marca la observación activa con nivel ERROR (cuando no hay referencia directa)."""
+    client = get_langfuse_client()
+    if client is None:
+        return
+    try:
+        client.update_current_span(
+            level="ERROR",
+            status_message=f"{type(error).__name__}: {error}",
+        )
+    except Exception:
+        pass
+
+
 def configure_langfuse() -> None:
     get_settings.cache_clear()
     configure_langfuse_env()

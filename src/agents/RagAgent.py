@@ -6,6 +6,10 @@ from .base_agent import BaseAgent
 from src.config import settings
 from src.database import VectorStore
 from src.preprocess.processor import extract_semana_from_query
+from src.observability.langfuse_tracing import (
+    get_langfuse_client,
+    record_exception,
+)
 from openai import OpenAI
 
 
@@ -55,11 +59,36 @@ class RagAgent(BaseAgent):
         }
 
     def _get_embedding(self, text: str) -> list[float]:
-        resp = self.openai_client.embeddings.create(
+        langfuse = get_langfuse_client()
+        if langfuse is None:
+            resp = self.openai_client.embeddings.create(
+                model=settings.embedding_model,
+                input=text,
+            )
+            return resp.data[0].embedding
+
+        with langfuse.start_as_current_observation(
+            as_type="generation",
+            name="openai-embedding",
             model=settings.embedding_model,
-            input=text,
-        )
-        return resp.data[0].embedding
+            input={"text": text},
+        ) as generation:
+            try:
+                resp = self.openai_client.embeddings.create(
+                    model=settings.embedding_model,
+                    input=text,
+                )
+            except Exception as error:
+                record_exception(generation, error)
+                raise
+
+            usage = getattr(resp, "usage", None)
+            input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+            generation.update(
+                output={"dimension": len(resp.data[0].embedding)},
+                usage_details={"input": input_tokens, "total": input_tokens},
+            )
+            return resp.data[0].embedding
 
     @staticmethod
     def _build_semana_filter(semana: str) -> Filter:
@@ -93,7 +122,20 @@ class RagAgent(BaseAgent):
         text = payload.get("text", "")
         return f"[{header}]\n{text}"
 
-    def _retrieve_chunks(self, prompt: str, query_embedding: list[float]) -> list[str]:
+    @staticmethod
+    def _fragment_info(result: ScoredPoint) -> dict:
+        payload = result.payload or {}
+        metadata = payload.get("metadata") or {}
+        return {
+            "score": round(result.score, 4) if result.score is not None else None,
+            "file_name": metadata.get("file_name"),
+            "semana": metadata.get("semana"),
+            "seccion": metadata.get("seccion"),
+            "autor": metadata.get("autor"),
+            "text": payload.get("text", ""),
+        }
+
+    def _retrieve_chunks(self, prompt: str, query_embedding: list[float]) -> list[ScoredPoint]:
         semana = extract_semana_from_query(prompt)
         query_filter = self._build_semana_filter(semana) if semana else None
         threshold = FILTERED_SCORE_THRESHOLD if semana else SCORE_THRESHOLD
@@ -106,7 +148,7 @@ class RagAgent(BaseAgent):
             query_filter=query_filter,
         )
 
-        chunks: list[str] = []
+        unique_results: list[ScoredPoint] = []
         seen_texts: set[str] = set()
         for result in results or []:
             if not result.payload:
@@ -115,16 +157,58 @@ class RagAgent(BaseAgent):
             if not text or text in seen_texts:
                 continue
             seen_texts.add(text)
-            chunks.append(self._format_chunk(result))
+            unique_results.append(result)
 
-        return chunks
+        return unique_results
+
+    def _retrieve(self, prompt: str) -> str | None:
+        """Recupera fragmentos del RAG y los registra como una herramienta en Langfuse."""
+        langfuse = get_langfuse_client()
+        semana = extract_semana_from_query(prompt)
+
+        if langfuse is None:
+            query_embedding = self._get_embedding(prompt)
+            results = self._retrieve_chunks(prompt, query_embedding)
+            chunks = [self._format_chunk(r) for r in results]
+            return "\n\n---\n\n".join(chunks) if chunks else None
+
+        with langfuse.start_as_current_observation(
+            as_type="tool",
+            name="rag_tool",
+            input={"query": prompt, "semana_filtro": semana},
+            metadata={
+                "collection": COLLECTION_NAME,
+                "search_limit": SEARCH_LIMIT,
+                "score_threshold": FILTERED_SCORE_THRESHOLD if semana else SCORE_THRESHOLD,
+            },
+        ) as tool_span:
+            try:
+                query_embedding = self._get_embedding(prompt)
+                results = self._retrieve_chunks(prompt, query_embedding)
+            except Exception as error:
+                record_exception(tool_span, error)
+                raise
+
+            chunks = [self._format_chunk(r) for r in results]
+            context_text = "\n\n---\n\n".join(chunks) if chunks else None
+            fragments = [self._fragment_info(r) for r in results]
+
+            tool_span.update(
+                output={
+                    "fragmentos_recuperados": len(fragments),
+                    "fragmentos": fragments,
+                },
+            )
+            if not fragments:
+                tool_span.update(
+                    level="WARNING",
+                    status_message="El RAG no recuperó fragmentos relevantes.",
+                )
+            return context_text
 
     def run(self, prompt: str, context: str | None = None) -> str:
         self.context_used = False
-        query_embedding = self._get_embedding(prompt)
-        chunks = self._retrieve_chunks(prompt, query_embedding)
-
-        context_text = "\n\n---\n\n".join(chunks) if chunks else None
+        context_text = self._retrieve(prompt)
         self.context_used = context_text is not None
 
         return super().run(prompt, context=context_text)
