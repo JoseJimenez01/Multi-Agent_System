@@ -201,6 +201,30 @@ services:
     networks:
       - mas-network
 
+  # =====================
+  # PostgreSQL (app principal - banco)
+  # =====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: mas-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: mas_db
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../src/database/postgres/banco_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ../src/database/postgres/banco_seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    networks:
+      - mas-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mas_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   qdrant_data:
   langfuse_postgres_data:
@@ -208,6 +232,7 @@ volumes:
   langfuse_zookeeper_data:
   langfuse_redis_data:
   langfuse_minio_data:
+  postgres_data:
 
 networks:
   mas-network:

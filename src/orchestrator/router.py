@@ -16,7 +16,7 @@ from anthropic import Anthropic
 
 
 
-from src.agents import RagAgent
+from src.agents import RagAgent, TransactionalAgent
 
 from src.agents.base_agent import BaseAgent
 
@@ -63,7 +63,17 @@ class Orchestrator:
 
                 ),
 
-                "general": "Cualquier otra consulta que no requiera buscar en los apuntes.",
+                "transactional": (
+
+                    "Consultas sobre datos bancarios, transacciones financieras, "
+
+                    "clientes, cuentas, fraudes, casos de revisión o cualquier informacion "
+
+                    "almacenada en la base de datos PostgreSQL (esquema banco)."
+
+                ),
+
+                "general": "Cualquier otra consulta que no requiera buscar en los apuntes ni en la BD bancaria.",
 
             },
 
@@ -71,13 +81,13 @@ class Orchestrator:
 
             "expected inputs": "Consulta del usuario.",
 
-            "expected outputs": 'Una sola palabra: "rag" o "general".',
+            "expected outputs": 'Una sola palabra: "rag", "transactional" o "general".',
 
             "restrictions": [
 
                 "Tu única función es determinar el tipo de tarea de la consulta.",
 
-                'Responde ÚNICAMENTE con una palabra: "rag" o "general".',
+                'Responde ÚNICAMENTE con una palabra: "rag", "transactional" o "general".',
 
             ],
 
@@ -91,11 +101,15 @@ class Orchestrator:
 
             "rag": RagAgent(),
 
+            "transactional": TransactionalAgent(),
+
             "general": BaseAgent(),
 
         }
 
         self.agent_map["rag"].name = "rag"
+
+        self.agent_map["transactional"].name = "transactional"
 
         self.agent_map["general"].name = "general"
 
