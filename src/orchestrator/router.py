@@ -16,7 +16,7 @@ from anthropic import Anthropic
 
 
 
-from src.agents import RagAgent, TransactionalAgent
+from src.agents import RagAgent, WebResearchAgent, TransactionalAgent, SummarizerAgent
 
 from src.agents.base_agent import BaseAgent
 
@@ -33,6 +33,13 @@ from src.observability.langfuse_tracing import (
     traced,
 )
 
+
+OUT_OF_SCOPE_MESSAGE = (
+    "Esta pregunta no corresponde a ninguna de las capacidades del sistema "
+    "(documentos del curso, búsqueda web, consultas transaccionales o resumen de conversación)."
+)
+
+OUT_OF_SCOPE = "fuera_de_alcance"
 
 
 
@@ -56,24 +63,29 @@ class Orchestrator:
             "task_types": {
 
                 "rag": (
-
                     "Consultas sobre apuntes, notas de clase, materiales del curso, "
-
                     "documentos académicos o contenido educativo almacenado en la base de conocimiento."
+                ),
 
+                "web": (
+                    "Consultas que requieren información externa o actual de internet, no "
+                    "contenida en los apuntes del curso (noticias, versiones de software, eventos recientes)."
                 ),
 
                 "transactional": (
-
-                    "Consultas sobre datos bancarios, transacciones financieras, "
-
-                    "clientes, cuentas, fraudes, casos de revisión o cualquier informacion "
-
-                    "almacenada en la base de datos PostgreSQL (esquema banco)."
-
+                    "Consultas sobre clientes, cuentas, transacciones o casos de fraude "
+                    "ficticios de la base de datos transaccional."
                 ),
 
-                "general": "Cualquier otra consulta que no requiera buscar en los apuntes ni en la BD bancaria.",
+                "summarizer": (
+                    "Solicitudes de resumen sobre la conversación o el historial de la sesión actual."
+                ),
+
+                OUT_OF_SCOPE: (
+                    "Cualquier consulta que no corresponda a apuntes del curso, búsqueda web, "
+                    "datos transaccionales ni resumen de conversación (por ejemplo, conocimiento "
+                    "general no relacionado con las capacidades del sistema)."
+                ),
 
             },
 
@@ -81,13 +93,13 @@ class Orchestrator:
 
             "expected inputs": "Consulta del usuario.",
 
-            "expected outputs": 'Una sola palabra: "rag", "transactional" o "general".',
+            "expected outputs": 'Una sola palabra: "rag", "web", "transactional", "summarizer" o "fuera_de_alcance".',
 
             "restrictions": [
 
                 "Tu única función es determinar el tipo de tarea de la consulta.",
 
-                'Responde ÚNICAMENTE con una palabra: "rag", "transactional" o "general".',
+                'Responde ÚNICAMENTE con una palabra: "rag", "web", "transactional", "summarizer" o "fuera_de_alcance".',
 
             ],
 
@@ -101,21 +113,20 @@ class Orchestrator:
 
             "rag": RagAgent(),
 
+            "web": WebResearchAgent(),
+
             "transactional": TransactionalAgent(),
 
-            "general": BaseAgent(),
+            "summarizer": SummarizerAgent(),
 
         }
 
-        self.agent_map["rag"].name = "rag"
-
-        self.agent_map["transactional"].name = "transactional"
-
-        self.agent_map["general"].name = "general"
+        for task_type, agent in self.agent_map.items():
+            agent.name = task_type
 
 
 
-    def route(self, prompt: str, session_id: str) -> dict:
+    def route(self, prompt: str, session_id: str, history: list[dict] | None = None) -> dict:
 
         trace_context = (
 
@@ -139,7 +150,7 @@ class Orchestrator:
 
             with trace_context:
 
-                result = self._route_traced(prompt, session_id)
+                result = self._route_traced(prompt, session_id, history)
 
         finally:
 
@@ -151,7 +162,7 @@ class Orchestrator:
 
     @traced(as_type="chain", name="orchestrator-route", capture_input=False, capture_output=False)
 
-    def _route_traced(self, prompt: str, session_id: str) -> dict:
+    def _route_traced(self, prompt: str, session_id: str, history: list[dict] | None = None) -> dict:
 
         langfuse = get_langfuse_client()
 
@@ -168,6 +179,31 @@ class Orchestrator:
 
             task_type = self._classify_task(prompt)
 
+            if task_type == OUT_OF_SCOPE:
+
+                response = {
+                    "result": OUT_OF_SCOPE_MESSAGE,
+                    "agent": OUT_OF_SCOPE,
+                    "context_used": False,
+                }
+
+                if langfuse is not None:
+
+                    langfuse.update_current_span(
+                        metadata={
+                            "session_id": session_id,
+                            "task_type": task_type,
+                            "routed_agent": OUT_OF_SCOPE,
+                        },
+                        output={
+                            "agent": response["agent"],
+                            "context_used": response["context_used"],
+                            "result_preview": response["result"][:500],
+                        },
+                    )
+
+                return response
+
             agent = self._get_agent(task_type)
 
             if langfuse is not None:
@@ -180,7 +216,10 @@ class Orchestrator:
                     },
                 )
 
-            result = agent.run(prompt)
+            if isinstance(agent, SummarizerAgent):
+                result = agent.run(prompt, context=SummarizerAgent.format_history(history))
+            else:
+                result = agent.run(prompt)
 
         except Exception as error:
 
@@ -214,7 +253,7 @@ class Orchestrator:
 
     def _get_agent(self, task_type: str) -> BaseAgent:
 
-        return self.agent_map.get(task_type, self.agent_map["general"])
+        return self.agent_map[task_type]
 
 
 
@@ -250,9 +289,13 @@ class Orchestrator:
 
         client = Anthropic(api_key=settings.anthropic_api_key)
 
-        model = settings.claude_model_fast
+        # El Orquestador es el agente más riguroso del sistema (Tabla I de la
+        # especificación): usa el modelo más fuerte disponible también para clasificar.
+        model = settings.claude_model_primary
 
         system_prompt = self._build_classifier_prompt()
+
+        valid_task_types = self.definition["task_types"]
 
         langfuse = get_langfuse_client()
 
@@ -268,7 +311,7 @@ class Orchestrator:
 
             task_type = response.content[0].text.strip().lower()
 
-            return task_type if task_type in self.definition["task_types"] else "general"
+            return task_type if task_type in valid_task_types else OUT_OF_SCOPE
 
         with langfuse.start_as_current_observation(
             as_type="generation",
@@ -304,7 +347,7 @@ class Orchestrator:
                 },
             )
 
-        resolved = task_type if task_type in self.definition["task_types"] else "general"
+        resolved = task_type if task_type in valid_task_types else OUT_OF_SCOPE
 
         langfuse.update_current_span(output={"task_type": resolved})
 

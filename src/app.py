@@ -86,7 +86,8 @@ with right:
             with st.chat_message("assistant"):
                 with st.status("Pensando...", expanded=False) as status:
                     status.write("Clasificando tarea con IA...")
-                    response = orchestrator.route(prompt, st.session_state.session_id)
+                    history = st.session_state.messages[:-1]
+                    response = orchestrator.route(prompt, st.session_state.session_id, history=history)
                     status.write("Respuesta lista")
 
                 st.markdown(response["result"])
@@ -101,12 +102,19 @@ with right:
             "context_used": response["context_used"],
         })
 
-        first_msg = st.session_state.conversations[0]["first_msg"] if st.session_state.conversations else None
-        if not first_msg or first_msg != st.session_state.messages[0]["content"]:
-            st.session_state.conversations.append({
-                "first_msg": st.session_state.messages[0]["content"],
-                "count": len(st.session_state.messages) // 2,
-                "time": datetime.now(ZoneInfo("America/Mexico_City")).strftime("%H:%M"),
-            })
+        conversation_entry = {
+            "first_msg": st.session_state.messages[0]["content"],
+            "count": len(st.session_state.messages) // 2,
+            "time": datetime.now(ZoneInfo("America/Mexico_City")).strftime("%H:%M"),
+        }
+        existing = next(
+            (c for c in st.session_state.conversations if c["session_id"] == st.session_state.session_id),
+            None,
+        )
+        if existing is None:
+            conversation_entry["session_id"] = st.session_state.session_id
+            st.session_state.conversations.append(conversation_entry)
+        else:
+            existing.update(conversation_entry)
 
         st.rerun()
