@@ -1,0 +1,72 @@
+[
+  {
+    "id": "Q01",
+    "pregunta": "¿En qué año se establece el término 'Inteligencia Artificial' y qué algoritmo surge ese mismo año según los apuntes?",
+    "respuesta_esperada": "1950: se establece el término IA y surgen las primeras redes neuronales; se desarrolla el algoritmo del perceptrón.",
+    "documento_fuente": "1_SEMANA_AI_20260219_1.pdf",
+    "semana": "Semana 1"
+  },
+  {
+    "id": "Q02",
+    "pregunta": "¿Qué tipo de aprendizaje automático utiliza tanto datos etiquetados como no etiquetados para optimizar los resultados?",
+    "respuesta_esperada": "Aprendizaje Semi-Supervisado.",
+    "documento_fuente": "2_SEMANA_AI_20260224_1.pdf",
+    "semana": "Semana 2"
+  },
+  {
+    "id": "Q03",
+    "pregunta": "Según los apuntes de la semana 3, ¿qué es un vector y qué dos propiedades tiene?",
+    "respuesta_esperada": "Un objeto matemático que tiene dirección y magnitud; puede interpretarse como una posición dentro de un espacio n-dimensional.",
+    "documento_fuente": "3_SEMANA_AI_20260303_1.pdf",
+    "semana": "Semana 3"
+  },
+  {
+    "id": "Q04",
+    "pregunta": "¿Por qué se prefiere usar MSE (Mean Squared Error) en lugar de MAE (Mean Absolute Error) según los apuntes de la semana 4?",
+    "respuesta_esperada": "Porque la función MSE es estrictamente convexa y diferenciable en todo su dominio, mientras que el MAE no es derivable en el punto donde el error es cero.",
+    "documento_fuente": "4_SEMANA_AI_20260310_1.pdf",
+    "semana": "Semana 4"
+  },
+  {
+    "id": "Q05",
+    "pregunta": "Según la regla del z-score mencionada en los apuntes de la semana 5, ¿a partir de qué valor se considera que una observación es un outlier?",
+    "respuesta_esperada": "Se considera outlier si |z| > 2 o |z| > 3.",
+    "documento_fuente": "5_SEMANA_AI_20260317_1.pdf",
+    "semana": "Semana 5"
+  },
+  {
+    "id": "Q06",
+    "pregunta": "¿Cuál es la fórmula de la función Sigmoid usada en regresión logística según los apuntes de la semana 6?",
+    "respuesta_esperada": "σ(x) = 1 / (1 + e^(-x)).",
+    "documento_fuente": "6_SEMANA_AI_20260324_1.pdf",
+    "semana": "Semana 6"
+  },
+  {
+    "id": "Q07",
+    "pregunta": "¿Qué técnica se recomienda para rellenar valores faltantes en un dataset según los apuntes de la semana 7, y qué cuidado especial se menciona con el ejemplo de un banco?",
+    "respuesta_esperada": "Rellenar con la media (si es normal), mediana o moda; es importante hacerlo por clases (ej. clientes de bajo riesgo vs. alto riesgo) para no introducir sesgos.",
+    "documento_fuente": "7_SEMANA_AI_20260407_1.pdf",
+    "semana": "Semana 7"
+  },
+  {
+    "id": "Q08",
+    "pregunta": "Según los apuntes de la semana 8, ¿a qué dimensión se transforman las imágenes del dataset MNIST y cuántas muestras tiene aproximadamente?",
+    "respuesta_esperada": "Se transforman de 128x128 a 28x28 píxeles (784 features), con aproximadamente 60,000 muestras, 1 canal (escala de grises).",
+    "documento_fuente": "8_Semana_AI_20260414_1.pdf",
+    "semana": "Semana 8"
+  },
+  {
+    "id": "Q09",
+    "pregunta": "Según los apuntes de la semana 11, ¿qué padding se utiliza típicamente para un filtro convolucional de 5x5?",
+    "respuesta_esperada": "P = 2 (para filtros 3x3 se utiliza P=1, para filtros 5x5 se utiliza P=2), para mantener el tamaño espacial de los mapas de activación.",
+    "documento_fuente": "11_SEMANA_AI_20260505_1.pdf",
+    "semana": "Semana 11"
+  },
+  {
+    "id": "Q10",
+    "pregunta": "Según los apuntes de la semana 13, ¿qué función cumple el Encoder dentro de un autoencoder?",
+    "respuesta_esperada": "Se encarga de extraer las características principales de la imagen de entrada y de comprimir su información (puede verse como convoluciones seguidas de módulos de pooling).",
+    "documento_fuente": "13_SEMANA_AI_20260519_1.pdf",
+    "semana": "Semana 13"
+  }
+]

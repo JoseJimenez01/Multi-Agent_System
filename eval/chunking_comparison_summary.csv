@@ -1,0 +1,11 @@
+id,pregunta,semana,best_score_sentences,best_score_fixed_size,mayor_score
+Q01,¿En qué año se establece el término 'Inteligencia Artificial' y qué algoritmo surge ese mismo año según los apuntes?,Semana 1,0.6001,0.6319,fixed_size
+Q02,¿Qué tipo de aprendizaje automático utiliza tanto datos etiquetados como no etiquetados para optimizar los resultados?,Semana 2,0.6068,0.5805,sentences
+Q03,"Según los apuntes de la semana 3, ¿qué es un vector y qué dos propiedades tiene?",Semana 3,0.6163,0.6192,fixed_size
+Q04,¿Por qué se prefiere usar MSE (Mean Squared Error) en lugar de MAE (Mean Absolute Error) según los apuntes de la semana 4?,Semana 4,0.5586,0.542,sentences
+Q05,"Según la regla del z-score mencionada en los apuntes de la semana 5, ¿a partir de qué valor se considera que una observación es un outlier?",Semana 5,0.4271,0.4341,fixed_size
+Q06,¿Cuál es la fórmula de la función Sigmoid usada en regresión logística según los apuntes de la semana 6?,Semana 6,0.6244,0.6255,fixed_size
+Q07,"¿Qué técnica se recomienda para rellenar valores faltantes en un dataset según los apuntes de la semana 7, y qué cuidado especial se menciona con el ejemplo de un banco?",Semana 7,0.5754,0.5896,fixed_size
+Q08,"Según los apuntes de la semana 8, ¿a qué dimensión se transforman las imágenes del dataset MNIST y cuántas muestras tiene aproximadamente?",Semana 8,0.5531,0.5766,fixed_size
+Q09,"Según los apuntes de la semana 11, ¿qué padding se utiliza típicamente para un filtro convolucional de 5x5?",Semana 11,0.5589,0.5593,fixed_size
+Q10,"Según los apuntes de la semana 13, ¿qué función cumple el Encoder dentro de un autoencoder?",Semana 13,0.6825,0.6808,sentences
