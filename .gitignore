@@ -17,3 +17,5 @@ venv/
 
 # Docker volumes (local)
 data/
+
+backups/

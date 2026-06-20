@@ -14,6 +14,9 @@ from src.observability.langfuse_tracing import (
 )
 
 
+MAX_HISTORY_MESSAGES = 10  # ventana de turnos recientes (5 intercambios usuario/asistente)
+
+
 class BaseAgent:
     name: str = "base"
     description: str = "Base agent"
@@ -66,18 +69,36 @@ class BaseAgent:
         return "\n".join(lines)
 
     @staticmethod
-    def _trace_messages(prompt: str, context: str | None, definition: dict) -> list[dict]:
-        messages = [{"role": "system", "content": BaseAgent.definition_to_system_prompt(definition)}]
-        if context:
-            messages.append({"role": "context", "content": context})
+    def _build_messages(history: list[dict] | None, prompt: str) -> list[dict]:
+        """Arma la lista de mensajes multi-turno para el LLM (memoria temporal de sesión).
+
+        Trunca a los MAX_HISTORY_MESSAGES turnos más recientes para no exceder
+        el contexto del modelo en sesiones largas.
+        """
+        messages = []
+        for msg in (history or [])[-MAX_HISTORY_MESSAGES:]:
+            content = msg.get("content")
+            if not content:
+                continue
+            role = "user" if msg.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": prompt})
         return messages
 
+    @staticmethod
+    def _trace_messages(messages: list[dict], context: str | None, definition: dict) -> list[dict]:
+        trace = [{"role": "system", "content": BaseAgent.definition_to_system_prompt(definition)}]
+        if context:
+            trace.append({"role": "context", "content": context})
+        trace.extend(messages)
+        return trace
+
     @traced(as_type="agent", capture_input=False, capture_output=False)
-    def run(self, prompt: str, context: str | None = None) -> str:
+    def run(self, prompt: str, context: str | None = None, history: list[dict] | None = None) -> str:
         system_prompt = self._build_system_prompt(context)
+        messages = self._build_messages(history, prompt)
         langfuse = get_langfuse_client()
-        trace_messages = self._trace_messages(prompt, context, self.definition)
+        trace_messages = self._trace_messages(messages, context, self.definition)
 
         if langfuse is not None:
             langfuse.update_current_span(
@@ -89,11 +110,12 @@ class BaseAgent:
                     "allowed_tools": self.definition.get("allowed_tools", []),
                     "has_context": context is not None,
                     "context_chars": len(context) if context else 0,
+                    "history_messages": len(messages) - 1,
                 },
             )
 
         if langfuse is None:
-            result_text, _ = self._call_llm(system_prompt, prompt)
+            result_text, _ = self._call_llm(system_prompt, messages)
             return result_text
 
         with langfuse.start_as_current_observation(
@@ -104,7 +126,7 @@ class BaseAgent:
             model_parameters={"temperature": 0.3, "max_tokens": 2048},
         ) as generation:
             try:
-                result_text, usage = self._call_llm(system_prompt, prompt)
+                result_text, usage = self._call_llm(system_prompt, messages)
             except Exception as error:
                 record_exception(generation, error)
                 record_current_exception(error)
@@ -128,12 +150,12 @@ class BaseAgent:
         flush_langfuse()
         return result_text
 
-    def _call_llm(self, system_prompt: str, prompt: str) -> tuple[str, object]:
+    def _call_llm(self, system_prompt: str, messages: list[dict]) -> tuple[str, object]:
         response = self.client.messages.create(
             model=self.model,
             max_tokens=2048,
             system=system_prompt,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             temperature=0.3,
         )
         return response.content[0].text, response.usage

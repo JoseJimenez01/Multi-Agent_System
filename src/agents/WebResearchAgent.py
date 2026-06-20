@@ -77,14 +77,15 @@ class WebResearchAgent(BaseAgent):
             "language": "Mismo idioma que usa el prompt del usuario."
         }
 
-    def run(self, prompt: str, context: str | None = None) -> str:
+    def run(self, prompt: str, context: str | None = None, history: list[dict] | None = None) -> str:
         self.context_used = False
         system_prompt = self._build_system_prompt(context)
+        messages = self._build_messages(history, prompt)
         langfuse = get_langfuse_client()
-        trace_messages = self._trace_messages(prompt, context, self.definition)
+        trace_messages = self._trace_messages(messages, context, self.definition)
 
         if langfuse is None:
-            answer, _, searched = self._search_and_answer(system_prompt, prompt)
+            answer, _, searched = self._search_and_answer(system_prompt, messages)
             self.context_used = searched
             return answer
 
@@ -96,10 +97,11 @@ class WebResearchAgent(BaseAgent):
                 "agent": self.name,
                 "model": self.model,
                 "allowed_tools": self.definition.get("allowed_tools", []),
+                "history_messages": len(messages) - 1,
             },
         ):
             answer, citations, searched = self._search_and_answer(
-                system_prompt, prompt, trace=True
+                system_prompt, messages, trace=True
             )
             self.context_used = searched
 
@@ -114,7 +116,7 @@ class WebResearchAgent(BaseAgent):
         return answer
 
     def _search_and_answer(
-        self, system_prompt: str, prompt: str, trace: bool = False
+        self, system_prompt: str, messages: list[dict], trace: bool = False
     ) -> tuple[str, list[dict], bool]:
         langfuse = get_langfuse_client() if trace else None
 
@@ -123,7 +125,7 @@ class WebResearchAgent(BaseAgent):
                 model=self.model,
                 max_tokens=1024,
                 system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 tools=[WEB_SEARCH_TOOL],
                 tool_choice=WEB_SEARCH_TOOL_CHOICE,
                 temperature=0.3,
@@ -134,7 +136,7 @@ class WebResearchAgent(BaseAgent):
             as_type="generation",
             name="anthropic-web-search",
             model=self.model,
-            input={"system": system_prompt, "user_message": prompt},
+            input={"system": system_prompt, "messages": messages},
             model_parameters={"temperature": 0.3, "max_tokens": 1024, "tools": [WEB_SEARCH_TOOL["type"]]},
         ) as generation:
             try:
@@ -142,7 +144,7 @@ class WebResearchAgent(BaseAgent):
                     model=self.model,
                     max_tokens=1024,
                     system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=messages,
                     tools=[WEB_SEARCH_TOOL],
                     tool_choice=WEB_SEARCH_TOOL_CHOICE,
                     temperature=0.3,

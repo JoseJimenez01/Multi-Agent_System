@@ -24,6 +24,8 @@ from src.database import VectorStore
 
 from src.config import settings
 
+from src.memory import db as memory_db
+
 from src.observability.langfuse_tracing import (
     flush_langfuse,
     get_langfuse_client,
@@ -50,6 +52,10 @@ class Orchestrator:
 
         self.vector_store = VectorStore()
 
+        # Crea el schema/tablas de memoria histórica si no existen (no-op si ya existen,
+        # y no rompe el arranque si la BD no está disponible).
+        memory_db.init_schema()
+
         self.definition = {
 
             "agent_name": "Orchestrator",
@@ -64,7 +70,11 @@ class Orchestrator:
 
                 "rag": (
                     "Consultas sobre apuntes, notas de clase, materiales del curso, "
-                    "documentos académicos o contenido educativo almacenado en la base de conocimiento."
+                    "documentos académicos o contenido educativo almacenado en la base de conocimiento. "
+                    "Incluye preguntas sobre quién es el autor o estudiante que escribió un apunte, "
+                    "en qué semana se elaboró, o qué temas cubre — aunque la pregunta mencione el "
+                    "nombre de una persona, si se refiere a apuntes del curso es 'rag', no "
+                    "'transactional' ni 'summarizer'."
                 ),
 
                 "web": (
@@ -73,12 +83,17 @@ class Orchestrator:
                 ),
 
                 "transactional": (
-                    "Consultas sobre clientes, cuentas, transacciones o casos de fraude "
-                    "ficticios de la base de datos transaccional."
+                    "Consultas sobre clientes, cuentas, transacciones bancarias o casos de fraude "
+                    "ficticios de la base de datos transaccional. Un nombre propio en la pregunta NO "
+                    "implica 'transactional' por sí solo — solo aplica si se pregunta explícitamente "
+                    "por datos bancarios/financieros de esa persona como cliente."
                 ),
 
                 "summarizer": (
-                    "Solicitudes de resumen sobre la conversación o el historial de la sesión actual."
+                    "Solicitudes de resumen sobre la conversación o el historial de la sesión actual, "
+                    "o preguntas sobre memoria histórica: qué se preguntó antes (en esta sesión u otras), "
+                    "comparar la pregunta actual con una anterior, o si ya se consultó algo "
+                    "(por agente y fecha) previamente."
                 ),
 
                 OUT_OF_SCOPE: (
@@ -156,6 +171,17 @@ class Orchestrator:
 
             flush_langfuse()
 
+        # Memoria histórica persistente: registra ambos lados del turno.
+        # save_message nunca lanza excepción (atrapa errores de BD internamente).
+        memory_db.save_message(session_id, "user", prompt, agent_used=None)
+        memory_db.save_message(
+            session_id,
+            "assistant",
+            result["result"],
+            agent_used=result["agent"],
+            metadata={"context_used": result["context_used"]},
+        )
+
         return result
 
 
@@ -217,9 +243,9 @@ class Orchestrator:
                 )
 
             if isinstance(agent, SummarizerAgent):
-                result = agent.run(prompt, context=SummarizerAgent.format_history(history))
+                result = agent.run(prompt, history=history, session_id=session_id)
             else:
-                result = agent.run(prompt)
+                result = agent.run(prompt, history=history)
 
         except Exception as error:
 

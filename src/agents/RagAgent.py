@@ -21,12 +21,13 @@ SEARCH_LIMIT = 5
 
 class RagAgent(BaseAgent):
 
-    def __init__(self):
+    def __init__(self, collection_name: str = COLLECTION_NAME):
         super().__init__()
         self.model = settings.claude_model_fast
         self.openai_client = OpenAI(api_key=settings.openai_api_key)
         self.vector_store = VectorStore()
-        self.vector_store.ensure_collection(COLLECTION_NAME)
+        self.collection_name = collection_name
+        self.vector_store.ensure_collection(self.collection_name)
         self.context_used = False
 
         self.definition = {
@@ -141,7 +142,7 @@ class RagAgent(BaseAgent):
         threshold = FILTERED_SCORE_THRESHOLD if semana else SCORE_THRESHOLD
 
         results = self.vector_store.search(
-            collection_name=COLLECTION_NAME,
+            collection_name=self.collection_name,
             query_vector=query_embedding,
             limit=SEARCH_LIMIT,
             score_threshold=threshold,
@@ -177,7 +178,7 @@ class RagAgent(BaseAgent):
             name="rag_tool",
             input={"query": prompt, "semana_filtro": semana},
             metadata={
-                "collection": COLLECTION_NAME,
+                "collection": self.collection_name,
                 "search_limit": SEARCH_LIMIT,
                 "score_threshold": FILTERED_SCORE_THRESHOLD if semana else SCORE_THRESHOLD,
             },
@@ -206,9 +207,9 @@ class RagAgent(BaseAgent):
                 )
             return context_text
 
-    def run(self, prompt: str, context: str | None = None) -> str:
+    def run(self, prompt: str, context: str | None = None, history: list[dict] | None = None) -> str:
         self.context_used = False
         context_text = self._retrieve(prompt)
         self.context_used = context_text is not None
 
-        return super().run(prompt, context=context_text)
+        return super().run(prompt, context=context_text, history=history)

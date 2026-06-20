@@ -278,9 +278,15 @@ def segment_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_O
             elif current_length + sentence_words > chunk_size:
                 chunk_text = " ".join(current_chunk)
                 chunks.append({"text": chunk_text, "token_estimate": len(chunk_text.split())})
-                if overlap > 0 and len(current_chunk) > 0:
-                    overlap_words = current_chunk[-overlap:] if overlap < len(current_chunk) else current_chunk
-                    current_chunk = overlap_words + [sentence]
+                if overlap > 0:
+                    # El overlap es en PALABRAS, no en oraciones: current_chunk es una
+                    # lista de oraciones, así que para tomar las últimas `overlap`
+                    # palabras hay que aplanar el chunk recién cerrado a nivel de palabra
+                    # (no rebanar current_chunk directamente, que rebanaría oraciones).
+                    chunk_words = chunk_text.split()
+                    overlap_words = chunk_words[-overlap:] if overlap < len(chunk_words) else chunk_words
+                    overlap_text = " ".join(overlap_words)
+                    current_chunk = [overlap_text, sentence] if overlap_text else [sentence]
                     current_length = len(overlap_words) + sentence_words
                 else:
                     current_chunk = [sentence]
@@ -296,8 +302,39 @@ def segment_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_O
     return chunks
 
 
-def process_document(filepath: Path) -> list[dict]:
-    logger.info(f"Processing: {filepath.name}")
+def segment_text_fixed_size(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict]:
+    """Segunda estrategia de segmentación: corte duro cada `chunk_size` palabras
+    sobre el texto completo, sin respetar límites de oración ni de sección
+    romana (a diferencia de segment_text()). Mismo chunk_size/overlap que la
+    estrategia por oraciones para que la única variable sea el criterio de corte.
+    """
+    words = text.split()
+    if not words:
+        return []
+
+    step = chunk_size - overlap if chunk_size > overlap else chunk_size
+    chunks = []
+
+    for i in range(0, len(words), step):
+        chunk_words = words[i : i + chunk_size]
+        if not chunk_words:
+            break
+        chunk_text = " ".join(chunk_words)
+        chunks.append({"text": chunk_text, "token_estimate": len(chunk_words)})
+        if i + chunk_size >= len(words):
+            break
+
+    return chunks
+
+
+SEGMENTATION_STRATEGIES = {
+    "sentences": segment_text,
+    "fixed_size": segment_text_fixed_size,
+}
+
+
+def process_document(filepath: Path, strategy: str = "sentences") -> list[dict]:
+    logger.info(f"Processing: {filepath.name} (strategy={strategy})")
 
     raw_text = extract_text_from_pdf(filepath)
     logger.info(f"  Extracted {len(raw_text)} chars")
@@ -307,19 +344,21 @@ def process_document(filepath: Path) -> list[dict]:
     cleaned_text = preprocess_text(raw_text)
     logger.info(f"  After preprocessing: {len(cleaned_text)} chars")
 
-    segments = segment_text(cleaned_text)
+    segmenter = SEGMENTATION_STRATEGIES[strategy]
+    segments = segmenter(cleaned_text)
     logger.info(f"  Segmented into {len(segments)} chunks")
 
     documents = []
     for idx, segment in enumerate(segments):
         doc = {
-            "id": f"{filepath.stem}_chunk_{idx:04d}",
+            "id": f"{filepath.stem}_{strategy}_chunk_{idx:04d}",
             "text": segment["text"],
             "token_estimate": segment["token_estimate"],
             "metadata": {
                 **metadata,
                 "chunk_index": idx,
                 "total_chunks": len(segments),
+                "chunk_strategy": strategy,
             },
         }
         documents.append(doc)
@@ -327,7 +366,7 @@ def process_document(filepath: Path) -> list[dict]:
     return documents
 
 
-def process_all_documents(notes_dir: Path | None = None) -> list[dict]:
+def process_all_documents(notes_dir: Path | None = None, strategy: str = "sentences") -> list[dict]:
     if notes_dir is None:
         notes_dir = NOTES_DIR
 
@@ -337,7 +376,7 @@ def process_all_documents(notes_dir: Path | None = None) -> list[dict]:
     all_documents = []
     for pdf_path in pdf_files:
         try:
-            docs = process_document(pdf_path)
+            docs = process_document(pdf_path, strategy=strategy)
             all_documents.extend(docs)
         except Exception as e:
             logger.error(f"Error processing {pdf_path.name}: {e}")

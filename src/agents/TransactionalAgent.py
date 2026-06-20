@@ -125,9 +125,9 @@ class TransactionalAgent(BaseAgent):
             "language": "Mismo idioma que usa el prompt del usuario.",
         }
 
-    def run(self, prompt: str, context: str | None = None) -> str:
+    def run(self, prompt: str, context: str | None = None, history: list[dict] | None = None) -> str:
         system_prompt = self._build_system_prompt(context)
-        messages = [{"role": "user", "content": prompt}]
+        messages = self._build_messages(history, prompt)
 
         response = self.client.messages.create(
             model=self.model,

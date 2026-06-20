@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 
 from src.orchestrator import Orchestrator
+from src.memory import db as memory_db
 
 st.set_page_config(page_title="Multi-Agent System", layout="wide")
 
@@ -36,29 +37,71 @@ def init_orchestrator():
     return Orchestrator()
 
 
+def _messages_from_db(session_id: str) -> list[dict]:
+    """Mapea filas de memory.messages al shape que usa la UI. [] si no hay BD/datos."""
+    db_messages = memory_db.get_session_messages(session_id)
+    return [
+        {
+            "role": m["role"],
+            "content": m["content"],
+            "agent": m.get("agent_used"),
+            "context_used": bool((m.get("metadata") or {}).get("context_used")),
+        }
+        for m in (db_messages or [])
+    ]
+
+
+def _switch_session(session_id: str) -> None:
+    st.session_state.session_id = session_id
+    st.query_params["session_id"] = session_id
+    st.session_state.messages = _messages_from_db(session_id)
+
+
 orchestrator = init_orchestrator()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "conversations" not in st.session_state:
-    st.session_state.conversations = []
-
 if "session_id" not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
+    # F5 reconecta el WebSocket y Streamlit arranca st.session_state desde cero,
+    # pero la URL (vía st.query_params) sí sobrevive al refresh. La usamos como
+    # ancla: si ya trae un session_id, es un refresh de una sesión existente y
+    # recuperamos su historial de memory.messages; si no, es una pestaña nueva.
+    query_session_id = st.query_params.get("session_id")
+
+    if query_session_id:
+        st.session_state.session_id = query_session_id
+        st.session_state.messages = _messages_from_db(query_session_id)
+    else:
+        st.session_state.session_id = str(uuid.uuid4())
+        st.query_params["session_id"] = st.session_state.session_id
+        st.session_state.messages = []
 
 left, right = st.columns([1, 2.5], gap="medium")
 
 with left:
     st.markdown("##### Conversaciones")
+
+    if st.button("+ Nueva conversación", use_container_width=True):
+        _switch_session(str(uuid.uuid4()))
+        st.rerun()
+
     st.markdown("---")
-    if not st.session_state.conversations:
-        st.caption("Aún no hay conversaciones")
+
+    past_sessions = memory_db.get_recent_sessions_with_preview(15)
+
+    if past_sessions is None:
+        st.caption("Memoria histórica no disponible (sin conexión a la base de datos).")
+    elif not past_sessions:
+        st.caption("Aún no hay conversaciones guardadas.")
     else:
-        for i, conv in enumerate(reversed(st.session_state.conversations), 1):
-            preview = conv["first_msg"][:50] + ("..." if len(conv["first_msg"]) > 50 else "")
-            st.markdown(f"**{preview}**  \n{conv['count']} mensajes  \n:gray[{conv['time']}]")
-            st.markdown("---")
+        for s in past_sessions:
+            first_message = s.get("first_message") or "(sin mensajes)"
+            preview = first_message[:45] + ("..." if len(first_message) > 45 else "")
+            turns = (s.get("message_count") or 0) // 2
+            is_active = s["session_id"] == st.session_state.session_id
+
+            label = f"{'➤ ' if is_active else ''}{preview} · {turns} mensajes"
+            if st.button(label, key=f"conv_{s['session_id']}", use_container_width=True, disabled=is_active):
+                _switch_session(s["session_id"])
+                st.rerun()
 
 with right:
     st.markdown(f"## {greeting()}")
@@ -101,20 +144,5 @@ with right:
             "agent": response["agent"],
             "context_used": response["context_used"],
         })
-
-        conversation_entry = {
-            "first_msg": st.session_state.messages[0]["content"],
-            "count": len(st.session_state.messages) // 2,
-            "time": datetime.now(ZoneInfo("America/Mexico_City")).strftime("%H:%M"),
-        }
-        existing = next(
-            (c for c in st.session_state.conversations if c["session_id"] == st.session_state.session_id),
-            None,
-        )
-        if existing is None:
-            conversation_entry["session_id"] = st.session_state.session_id
-            st.session_state.conversations.append(conversation_entry)
-        else:
-            existing.update(conversation_entry)
 
         st.rerun()
