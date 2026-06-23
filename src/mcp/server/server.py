@@ -25,7 +25,7 @@ def get_transaction_by_id(transaction_id: int) -> list[dict[str, Any]]:
     """Get a single transaction by its ID."""
     return db.execute_query("""
         SELECT t.id, t.fecha, t.hora, t.monto, t.descripcion, t.ip_origen, t.canal,
-               ct.numero_cuenta, b.nombre AS banco,
+               RIGHT(ct.numero_cuenta::text, 4) AS numero_cuenta, b.nombre AS banco,
                tt.nombre AS tipo_transaccion,
                et.nombre AS estado,
                m.codigo AS moneda,
@@ -44,9 +44,10 @@ def get_transaction_by_id(transaction_id: int) -> list[dict[str, Any]]:
 @mcp.tool()
 def get_transactions(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
     """Get all transactions with pagination."""
+    limit = 50 if not limit or limit > 50 else limit
     return db.execute_query("""
         SELECT t.id, t.fecha, t.hora, t.monto, t.descripcion, t.ip_origen, t.canal,
-               ct.numero_cuenta, b.nombre AS banco,
+               RIGHT(ct.numero_cuenta::text, 4) AS numero_cuenta, b.nombre AS banco,
                tt.nombre AS tipo_transaccion,
                et.nombre AS estado,
                m.codigo AS moneda,
@@ -76,9 +77,19 @@ def search_transactions(
     monto_max: float = None,
     pais: str = None,
     canal: str = None,
-    limit: int = 50
+    limit: int = 50,
+    justificacion: str = ""
 ) -> list[dict[str, Any]]:
-    """Search transactions with optional filters. All filter parameters are optional."""
+    """Search transactions with filters. fecha_desde, fecha_hasta and justificacion
+    (>=10 chars) are required to limit historical, unjustified bulk queries."""
+    if not justificacion or len(justificacion.strip()) < 10:
+        return [{"error": "Se requiere una justificacion de al menos 10 caracteres para esta consulta."}]
+
+    if not fecha_desde or not fecha_hasta:
+        return [{"error": "Se requiere rango de fechas (fecha_desde y fecha_hasta) para búsquedas históricas."}]
+
+    limit = 50 if not limit or limit > 50 else limit
+
     conditions = []
     params = []
 
@@ -117,7 +128,7 @@ def search_transactions(
 
     query = f"""
         SELECT t.id, t.fecha, t.hora, t.monto, t.descripcion, t.ip_origen, t.canal,
-               ct.numero_cuenta, b.nombre AS banco,
+               RIGHT(ct.numero_cuenta::text, 4) AS numero_cuenta, b.nombre AS banco,
                tt.nombre AS tipo_transaccion,
                et.nombre AS estado,
                m.codigo AS moneda,
@@ -181,10 +192,11 @@ def get_customers(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
 
 @mcp.tool()
 def get_recent_flagged_transactions(days: int = 7) -> list[dict[str, Any]]:
-    """Get transactions that have been flagged in fraud cases within the last N days."""
+    """Get transactions that have been flagged in fraud cases within the last N days.
+    Hard-capped at 50 rows, no exceptions."""
     return db.execute_query("""
         SELECT t.id AS transaction_id, t.fecha, t.hora, t.monto, t.descripcion, t.canal,
-               ct.numero_cuenta, p.nombre AS cliente_nombre, p.apellido AS cliente_apellido,
+               RIGHT(ct.numero_cuenta::text, 4) AS numero_cuenta, p.nombre AS cliente_nombre, p.apellido AS cliente_apellido,
                cr.id AS caso_id, cr.fecha_apertura, cr.estado AS caso_estado,
                rf.nombre AS regla_disparada
         FROM banco.caso_revision cr
@@ -195,6 +207,7 @@ def get_recent_flagged_transactions(days: int = 7) -> list[dict[str, Any]]:
         JOIN banco.regla_fraude rf ON rf.id = cr.id_regla_fraude
         WHERE cr.fecha_apertura >= CURRENT_DATE - %s::interval
         ORDER BY cr.fecha_apertura DESC
+        LIMIT 50
     """, (f"{days} days",))
 
 
@@ -203,9 +216,14 @@ def create_fraud_case(
     transaction_id: int,
     reason: str,
     severity: str = "ALTA",
+    justificacion: str = "",
     ctx: Context = None
 ) -> list[dict[str, Any]]:
-    """Create a new fraud case for a transaction. severity: ALTA, MEDIA, or BAJA."""
+    """Create a new fraud case for a transaction. severity: ALTA, MEDIA, or BAJA.
+    justificacion (>=10 chars) is required: why this MCP call is being made."""
+    if not justificacion or len(justificacion.strip()) < 10:
+        return [{"error": "Se requiere una justificacion de al menos 10 caracteres para esta consulta."}]
+
     if severity.upper() not in ("ALTA", "MEDIA", "BAJA"):
         return [{"error": "severity must be ALTA, MEDIA, or BAJA"}]
 

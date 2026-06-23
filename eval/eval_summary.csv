@@ -1,0 +1,7 @@
+categoria,total_preguntas,paso_criterio,agentes_usados
+factual,10,8,rag=10
+comparacion,5,5,rag=5
+seguimiento_conversacional,5,5,rag -> rag=5
+fuera_de_alcance,5,5,fuera_de_alcance=5
+web_search,5,5,web=5
+transactional,5,1,transactional=5

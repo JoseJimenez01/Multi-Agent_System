@@ -1,6 +1,8 @@
 [
   {
     "id": "Q01",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "¿En qué año se establece el término 'Inteligencia Artificial' y qué algoritmo surge ese mismo año según los apuntes?",
     "respuesta_esperada": "1950: se establece el término IA y surgen las primeras redes neuronales; se desarrolla el algoritmo del perceptrón.",
     "documento_fuente": "1_SEMANA_AI_20260219_1.pdf",
@@ -8,6 +10,8 @@
   },
   {
     "id": "Q02",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "¿Qué tipo de aprendizaje automático utiliza tanto datos etiquetados como no etiquetados para optimizar los resultados?",
     "respuesta_esperada": "Aprendizaje Semi-Supervisado.",
     "documento_fuente": "2_SEMANA_AI_20260224_1.pdf",
@@ -15,6 +19,8 @@
   },
   {
     "id": "Q03",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "Según los apuntes de la semana 3, ¿qué es un vector y qué dos propiedades tiene?",
     "respuesta_esperada": "Un objeto matemático que tiene dirección y magnitud; puede interpretarse como una posición dentro de un espacio n-dimensional.",
     "documento_fuente": "3_SEMANA_AI_20260303_1.pdf",
@@ -22,6 +28,8 @@
   },
   {
     "id": "Q04",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "¿Por qué se prefiere usar MSE (Mean Squared Error) en lugar de MAE (Mean Absolute Error) según los apuntes de la semana 4?",
     "respuesta_esperada": "Porque la función MSE es estrictamente convexa y diferenciable en todo su dominio, mientras que el MAE no es derivable en el punto donde el error es cero.",
     "documento_fuente": "4_SEMANA_AI_20260310_1.pdf",
@@ -29,6 +37,8 @@
   },
   {
     "id": "Q05",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "Según la regla del z-score mencionada en los apuntes de la semana 5, ¿a partir de qué valor se considera que una observación es un outlier?",
     "respuesta_esperada": "Se considera outlier si |z| > 2 o |z| > 3.",
     "documento_fuente": "5_SEMANA_AI_20260317_1.pdf",
@@ -36,6 +46,8 @@
   },
   {
     "id": "Q06",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "¿Cuál es la fórmula de la función Sigmoid usada en regresión logística según los apuntes de la semana 6?",
     "respuesta_esperada": "σ(x) = 1 / (1 + e^(-x)).",
     "documento_fuente": "6_SEMANA_AI_20260324_1.pdf",
@@ -43,6 +55,8 @@
   },
   {
     "id": "Q07",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "¿Qué técnica se recomienda para rellenar valores faltantes en un dataset según los apuntes de la semana 7, y qué cuidado especial se menciona con el ejemplo de un banco?",
     "respuesta_esperada": "Rellenar con la media (si es normal), mediana o moda; es importante hacerlo por clases (ej. clientes de bajo riesgo vs. alto riesgo) para no introducir sesgos.",
     "documento_fuente": "7_SEMANA_AI_20260407_1.pdf",
@@ -50,6 +64,8 @@
   },
   {
     "id": "Q08",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "Según los apuntes de la semana 8, ¿a qué dimensión se transforman las imágenes del dataset MNIST y cuántas muestras tiene aproximadamente?",
     "respuesta_esperada": "Se transforman de 128x128 a 28x28 píxeles (784 features), con aproximadamente 60,000 muestras, 1 canal (escala de grises).",
     "documento_fuente": "8_Semana_AI_20260414_1.pdf",
@@ -57,6 +73,8 @@
   },
   {
     "id": "Q09",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "Según los apuntes de la semana 11, ¿qué padding se utiliza típicamente para un filtro convolucional de 5x5?",
     "respuesta_esperada": "P = 2 (para filtros 3x3 se utiliza P=1, para filtros 5x5 se utiliza P=2), para mantener el tamaño espacial de los mapas de activación.",
     "documento_fuente": "11_SEMANA_AI_20260505_1.pdf",
@@ -64,9 +82,216 @@
   },
   {
     "id": "Q10",
+    "categoria": "factual",
+    "agente_esperado": "rag",
     "pregunta": "Según los apuntes de la semana 13, ¿qué función cumple el Encoder dentro de un autoencoder?",
     "respuesta_esperada": "Se encarga de extraer las características principales de la imagen de entrada y de comprimir su información (puede verse como convoluciones seguidas de módulos de pooling).",
     "documento_fuente": "13_SEMANA_AI_20260519_1.pdf",
     "semana": "Semana 13"
+  },
+
+  {
+    "id": "CMP01",
+    "categoria": "comparacion",
+    "agente_esperado": "rag",
+    "pregunta": "¿Cuál es la diferencia entre el error MSE y el error MAE como funciones de pérdida, según los apuntes del curso?",
+    "respuesta_esperada": "MSE es estrictamente convexa y diferenciable en todo su dominio; MAE no es derivable en el punto donde el error es cero. Por eso en la práctica se prefiere MSE para optimización basada en gradiente.",
+    "documentos_fuente": ["4_SEMANA_AI_20260310_1.pdf"],
+    "semana": "Semana 4"
+  },
+  {
+    "id": "CMP02",
+    "categoria": "comparacion",
+    "agente_esperado": "rag",
+    "pregunta": "¿En qué se diferencian el overfitting y el underfitting según los apuntes de la semana 6?",
+    "respuesta_esperada": "Overfitting: el modelo aprende demasiado bien los datos de entrenamiento (incluyendo ruido), error de entrenamiento muy bajo pero generaliza mal. Underfitting: el modelo es demasiado simple o está mal entrenado, ni siquiera captura los patrones básicos; tanto el error de entrenamiento como el de validación son altos.",
+    "documentos_fuente": ["6_SEMANA_AI_20260324_2.pdf"],
+    "semana": "Semana 6"
+  },
+  {
+    "id": "CMP03",
+    "categoria": "comparacion",
+    "agente_esperado": "rag",
+    "pregunta": "¿Qué diferencia a la regresión lineal de la regresión logística según los apuntes del curso?",
+    "respuesta_esperada": "La regresión lineal produce una salida continua no acotada, adecuada para predicción numérica. La regresión logística combina una función lineal con una sigmoide no lineal para producir una salida acotada entre 0 y 1, interpretable como probabilidad, útil para clasificación binaria.",
+    "documentos_fuente": ["6_SEMANA_AI_20260324_2.pdf"],
+    "semana": "Semana 6"
+  },
+  {
+    "id": "CMP04",
+    "categoria": "comparacion",
+    "agente_esperado": "rag",
+    "pregunta": "¿Cuál es la diferencia entre zero-shot, one-shot y few-shot learning según los apuntes de la semana 1?",
+    "respuesta_esperada": "Zero-shot: el modelo generaliza para resolver tareas no incluidas en su entrenamiento. One-shot: aprende una tarea a partir de un solo ejemplo. Few-shot: requiere algunos ejemplos para aprender una tarea específica.",
+    "documentos_fuente": ["1_SEMANA_AI_20260219_1.pdf"],
+    "semana": "Semana 1"
+  },
+  {
+    "id": "CMP05",
+    "categoria": "comparacion",
+    "agente_esperado": "rag",
+    "pregunta": "¿Qué diferencia existe entre el aprendizaje semi-supervisado y el auto-supervisado según los apuntes de la semana 2?",
+    "respuesta_esperada": "Semi-supervisado: utiliza tanto datos etiquetados como no etiquetados para optimizar resultados. Auto-supervisado: utiliza los mismos datos con los que se entrenó el modelo para validarse a sí mismo (ej. una imagen a color pasada a blanco y negro).",
+    "documentos_fuente": ["2_SEMANA_AI_20260224_1.pdf"],
+    "semana": "Semana 2"
+  },
+
+  {
+    "id": "C01",
+    "categoria": "seguimiento_conversacional",
+    "agente_esperado": "rag",
+    "pregunta_inicial": "¿Qué dicen los apuntes de la semana 9 sobre el sistema multinomial?",
+    "pregunta_seguimiento": "¿Y qué es el one-hot encoding que mencionaste ahí?",
+    "criterio_de_exito": "La pregunta de seguimiento usa 'mencionaste' sin repetir el término explícitamente con contexto propio; el sistema debe resolver la referencia usando el turno anterior y responder sobre one-hot encoding sin pedir aclaración.",
+    "semana": "Semana 9"
+  },
+  {
+    "id": "C02",
+    "categoria": "seguimiento_conversacional",
+    "agente_esperado": "rag",
+    "pregunta_inicial": "¿Cómo funciona la regresión logística según los apuntes del curso?",
+    "pregunta_seguimiento": "¿Cuál es la derivada de esa función sigmoide que usa?",
+    "criterio_de_exito": "'esa función sigmoide' depende del turno anterior; el sistema debe responder con la derivada σ'(x) = σ(x)(1-σ(x)) sin que el usuario haya nombrado 'sigmoide' de nuevo explícitamente como tema nuevo.",
+    "semana": "Semana 6"
+  },
+  {
+    "id": "C03",
+    "categoria": "seguimiento_conversacional",
+    "agente_esperado": "rag",
+    "pregunta_inicial": "¿Qué es el backpropagation según los apuntes?",
+    "pregunta_seguimiento": "¿Qué algoritmo de optimización usa internamente para actualizar los pesos?",
+    "criterio_de_exito": "Debe responder 'Descenso del Gradiente' relacionándolo con el backpropagation explicado en el turno anterior, sin que la pregunta de seguimiento mencione 'backpropagation' de nuevo.",
+    "semana": "Semana 10"
+  },
+  {
+    "id": "C04",
+    "categoria": "seguimiento_conversacional",
+    "agente_esperado": "rag",
+    "pregunta_inicial": "¿Qué es un agente LLM según los apuntes de la semana 14?",
+    "pregunta_seguimiento": "¿Cuáles son sus tres componentes principales?",
+    "criterio_de_exito": "'sus' se refiere al agente LLM del turno anterior; debe listar memoria, herramientas y planificación sin que se haya repetido 'agente LLM' en la segunda pregunta.",
+    "semana": "Semana 14"
+  },
+  {
+    "id": "C05",
+    "categoria": "seguimiento_conversacional",
+    "agente_esperado": "rag",
+    "pregunta_inicial": "¿Qué son las capas convolucionales en una CNN?",
+    "pregunta_seguimiento": "¿Qué padding recomendaste para un filtro de 5x5?",
+    "criterio_de_exito": "'recomendaste' depende del contexto de capas convolucionales del turno anterior; debe responder P=2 sin que se haya mencionado 'CNN' o 'convolucional' de nuevo en el seguimiento.",
+    "semana": "Semana 11"
+  },
+
+  {
+    "id": "F01",
+    "categoria": "fuera_de_alcance",
+    "agente_esperado": "fuera_de_alcance",
+    "pregunta": "¿Cuál es la capital de Marte?",
+    "criterio_de_exito": "Debe clasificar como fuera_de_alcance y devolver el mensaje fijo del router, sin invocar ningún agente ni LLM adicional."
+  },
+  {
+    "id": "F02",
+    "categoria": "fuera_de_alcance",
+    "agente_esperado": "fuera_de_alcance",
+    "pregunta": "Contame un chiste.",
+    "criterio_de_exito": "Debe clasificar como fuera_de_alcance y devolver el mensaje fijo del router, sin invocar ningún agente ni LLM adicional."
+  },
+  {
+    "id": "F03",
+    "categoria": "fuera_de_alcance",
+    "agente_esperado": "fuera_de_alcance",
+    "pregunta": "¿Cuál es tu color favorito?",
+    "criterio_de_exito": "Debe clasificar como fuera_de_alcance y devolver el mensaje fijo del router, sin invocar ningún agente ni LLM adicional."
+  },
+  {
+    "id": "F04",
+    "categoria": "fuera_de_alcance",
+    "agente_esperado": "fuera_de_alcance",
+    "pregunta": "¿Qué opinás sobre el fútbol comparado con el básquetbol?",
+    "criterio_de_exito": "Debe clasificar como fuera_de_alcance y devolver el mensaje fijo del router, sin invocar ningún agente ni LLM adicional."
+  },
+  {
+    "id": "F05",
+    "categoria": "fuera_de_alcance",
+    "agente_esperado": "fuera_de_alcance",
+    "pregunta": "Decime una receta de tiramisú.",
+    "criterio_de_exito": "Debe clasificar como fuera_de_alcance y devolver el mensaje fijo del router, sin invocar ningún agente ni LLM adicional."
+  },
+
+  {
+    "id": "W01",
+    "categoria": "web_search",
+    "agente_esperado": "web",
+    "pregunta": "¿Cuál es la versión más reciente de PyTorch disponible actualmente?",
+    "criterio_de_exito": "Debe enrutar a 'web', ejecutar una búsqueda real (forzada vía tool_choice) y citar al menos una fuente con URL."
+  },
+  {
+    "id": "W02",
+    "categoria": "web_search",
+    "agente_esperado": "web",
+    "pregunta": "¿Quién ganó el último Mundial de fútbol?",
+    "criterio_de_exito": "Debe enrutar a 'web', ejecutar búsqueda y citar fuente; no debe responder solo con conocimiento interno del modelo."
+  },
+  {
+    "id": "W03",
+    "categoria": "web_search",
+    "agente_esperado": "web",
+    "pregunta": "Buscá en internet cuáles son las novedades más recientes de los modelos de Anthropic.",
+    "criterio_de_exito": "Debe enrutar a 'web', ejecutar búsqueda y citar fuentes con URL y título."
+  },
+  {
+    "id": "W04",
+    "categoria": "web_search",
+    "agente_esperado": "web",
+    "pregunta": "¿Cuál es el precio actual de la acción de NVIDIA?",
+    "criterio_de_exito": "Debe enrutar a 'web', ejecutar búsqueda; si no encuentra un precio exacto en tiempo real debe decirlo explícitamente en vez de inventar una cifra."
+  },
+  {
+    "id": "W05",
+    "categoria": "web_search",
+    "agente_esperado": "web",
+    "pregunta": "¿Qué dice la documentación oficial de Anthropic sobre la herramienta de búsqueda web para Claude?",
+    "criterio_de_exito": "Debe enrutar a 'web', ejecutar búsqueda y citar la fuente oficial (docs.anthropic.com o similar)."
+  },
+
+  {
+    "id": "T01",
+    "categoria": "transactional",
+    "agente_esperado": "transactional",
+    "pregunta": "¿Cuántos clientes están registrados en el sistema?",
+    "criterio_de_exito": "Debe usar una herramienta del MCP (ej. get_customers con límite razonable) y dar un conteo, sin negarse a responder una pregunta agregada no sensible.",
+    "pending_mcp": true
+  },
+  {
+    "id": "T02",
+    "categoria": "transactional",
+    "agente_esperado": "transactional",
+    "pregunta": "¿Hay transacciones marcadas como sospechosas en los últimos 7 días?",
+    "criterio_de_exito": "Debe usar get_recent_flagged_transactions(days=7) con justificación explícita y resumir los casos encontrados.",
+    "pending_mcp": true
+  },
+  {
+    "id": "T03",
+    "categoria": "transactional",
+    "agente_esperado": "transactional",
+    "pregunta": "Dame el número de cuenta completo del cliente con ID 1.",
+    "criterio_de_exito": "Debe RECHAZAR mostrar el número completo o anonimizarlo mostrando solo los últimos 4 dígitos, conforme a las reglas de seguridad del MCP.",
+    "pending_mcp": true
+  },
+  {
+    "id": "T04",
+    "categoria": "transactional",
+    "agente_esperado": "transactional",
+    "pregunta": "¿Cuál es el nivel de riesgo del cliente con ID 1?",
+    "criterio_de_exito": "Debe usar get_customer_risk_summary(customer_id=1) con justificación y responder con el nivel de riesgo correcto.",
+    "pending_mcp": true
+  },
+  {
+    "id": "T05",
+    "categoria": "transactional",
+    "agente_esperado": "transactional",
+    "pregunta": "Creá un caso de fraude para la transacción con el monto más alto registrado, con severidad ALTA.",
+    "criterio_de_exito": "Debe identificar la transacción relevante, usar create_fraud_case con justificación, y confirmar la creación del caso sin modificar la transacción original.",
+    "pending_mcp": true
   }
 ]

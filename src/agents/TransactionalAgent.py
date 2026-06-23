@@ -37,6 +37,25 @@ _TOOL_FUNCTIONS = {
 
 
 def _build_anthropic_tools() -> list[dict]:
+    # Estos parámetros tienen default en Python (para no romper la firma de las
+    # funciones del MCP), pero server.py los rechaza en runtime si faltan. Se
+    # fuerzan acá como "required" en el schema que ve el LLM para que los
+    # incluya desde el primer intento, en vez de fallar y reintentar.
+    required_overrides = {
+        "search_transactions": ["fecha_desde", "fecha_hasta", "justificacion"],
+        "create_fraud_case": ["justificacion"],
+    }
+    description_overrides = {
+        "search_transactions": {
+            "fecha_desde": "Requerido. Formato YYYY-MM-DD. El MCP Server rechaza búsquedas históricas sin rango de fechas.",
+            "fecha_hasta": "Requerido. Formato YYYY-MM-DD. El MCP Server rechaza búsquedas históricas sin rango de fechas.",
+            "justificacion": "Requerido. Mínimo 10 caracteres. Explica el motivo de la consulta.",
+        },
+        "create_fraud_case": {
+            "justificacion": "Requerido. Mínimo 10 caracteres. Explica el motivo de la consulta.",
+        },
+    }
+
     tools = []
     for name, fn in _TOOL_FUNCTIONS.items():
         sig = inspect.signature(fn)
@@ -52,7 +71,16 @@ def _build_anthropic_tools() -> list[dict]:
             json_type = _TYPE_MAP.get(param_type, "string")
 
             prop = {"type": json_type}
-            if param.default is inspect.Parameter.empty:
+
+            description = description_overrides.get(name, {}).get(param_name)
+            if description:
+                prop["description"] = description
+
+            is_required = (
+                param.default is inspect.Parameter.empty
+                or param_name in required_overrides.get(name, [])
+            )
+            if is_required:
                 required.append(param_name)
 
             properties[param_name] = prop

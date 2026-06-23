@@ -203,7 +203,7 @@ class Orchestrator:
 
         try:
 
-            task_type = self._classify_task(prompt)
+            task_type = self._classify_task(prompt, history)
 
             if task_type == OUT_OF_SCOPE:
 
@@ -283,7 +283,33 @@ class Orchestrator:
 
 
 
-    def _build_classifier_prompt(self) -> str:
+    # Cuántos pares pregunta/respuesta recientes se le muestran al clasificador
+    # para resolver referencias ambiguas ("esa función", "lo que mencionaste").
+    CLASSIFIER_HISTORY_PAIRS = 2
+    CLASSIFIER_HISTORY_CHARS_PER_MESSAGE = 300
+
+    @classmethod
+    def _format_recent_history_for_classifier(cls, history: list[dict] | None) -> str | None:
+        if not history:
+            return None
+
+        recent = history[-(cls.CLASSIFIER_HISTORY_PAIRS * 2):]
+        if not recent:
+            return None
+
+        lines = []
+        for msg in recent:
+            content = (msg.get("content") or "")[: cls.CLASSIFIER_HISTORY_CHARS_PER_MESSAGE]
+            if not content:
+                continue
+            if msg.get("role") == "user":
+                lines.append(f"Usuario: {content}")
+            else:
+                lines.append(f"Asistente (agente={msg.get('agent', '?')}): {content}")
+
+        return "\n".join(lines) if lines else None
+
+    def _build_classifier_prompt(self, recent_history_text: str | None = None) -> str:
 
         lines = [
 
@@ -305,13 +331,30 @@ class Orchestrator:
 
             lines.append(restriction)
 
+        if recent_history_text:
+
+            lines.append("")
+            lines.append(
+                "Historial reciente de la sesión, incluido ÚNICAMENTE para que puedas resolver "
+                "referencias ambiguas en la PREGUNTA ACTUAL (pronombres como 'esa', 'eso', 'ese', "
+                "continuaciones como 'y entonces', o frases como 'lo que mencionaste antes'). "
+                "NO uses este historial para decidir la categoría: la clasificación debe basarse "
+                "siempre en el TEMA real de la PREGUNTA ACTUAL, nunca en qué agente respondió el "
+                "turno anterior. Si la pregunta actual cambia de tema, clasificá según el tema "
+                "nuevo aunque el historial sea de otra categoría. Si la pregunta actual no tiene "
+                "ninguna referencia ambigua que dependa del historial, ignoralo por completo."
+            )
+            lines.append("--- Historial reciente (NO decide la categoría, solo resuelve referencias) ---")
+            lines.append(recent_history_text)
+            lines.append("--- Fin del historial ---")
+
         return "\n".join(lines)
 
 
 
     @traced(as_type="span", name="classify-task")
 
-    def _classify_task(self, prompt: str) -> str:
+    def _classify_task(self, prompt: str, history: list[dict] | None = None) -> str:
 
         client = Anthropic(api_key=settings.anthropic_api_key)
 
@@ -319,7 +362,9 @@ class Orchestrator:
         # especificación): usa el modelo más fuerte disponible también para clasificar.
         model = settings.claude_model_primary
 
-        system_prompt = self._build_classifier_prompt()
+        recent_history_text = self._format_recent_history_for_classifier(history)
+
+        system_prompt = self._build_classifier_prompt(recent_history_text)
 
         valid_task_types = self.definition["task_types"]
 
@@ -343,7 +388,7 @@ class Orchestrator:
             as_type="generation",
             name="anthropic-classifier",
             model=model,
-            input={"system": system_prompt, "user_message": prompt},
+            input={"system": system_prompt, "user_message": prompt, "recent_history": recent_history_text},
             model_parameters={"temperature": 0, "max_tokens": 10},
         ) as generation:
 
