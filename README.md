@@ -95,13 +95,26 @@ Esto levanta:
 - **Postgres (`mas-postgres`)** — una sola instancia con dos schemas separados: `banco` (datos transaccionales ficticios, poblados automáticamente la primera vez desde `src/database/postgres/banco_schema.sql`/`banco_seed.sql`) y `memory` (sesiones/mensajes históricos, se crea sola al instanciar el Orquestador).
 - **Stack de Langfuse self-hosted** — Postgres propio, ClickHouse, Redis, MinIO, Zookeeper, el servicio web y el worker. Ver `documentacion/LANGFUSE.md` para el detalle de cada uno y cómo crear la cuenta/proyecto inicial.
 
-Si el volumen de `mas-postgres` ya existía sin los datos de `banco` (por
-ejemplo, tras un `docker compose down` sin borrar volúmenes seguido de un
-cambio en el schema), repoblar manualmente:
+#### Comandos útiles de Docker
 
-```bash
-python -m src.database.postgres.setup_db
-```
+| Comando | Descripción |
+| --- | --- |
+| `docker compose -f docker/docker-compose.yml down` | Detener y eliminar los contenedores (los volúmenes persisten). |
+| `docker compose -f docker/docker-compose.yml down -v` | Detener contenedores **y eliminar los volúmenes** (borra todos los datos de Postgres, Qdrant y el stack de Langfuse). |
+| `docker compose -f docker/docker-compose.yml logs -f` | Ver los logs de todos los servicios en tiempo real. |
+| `docker compose -f docker/docker-compose.yml ps` | Listar el estado de los contenedores. |
+| `docker compose -f docker/docker-compose.yml restart` | Reiniciar todos los servicios. |
+| `docker compose -f docker/docker-compose.yml pull` | Actualizar las imágenes al tag más reciente. |
+| `docker volume ls` | Listar todos los volúmenes Docker del sistema. |
+| `docker volume rm <nombre-del-volumen>` | Eliminar un volumen específico (ej. `mas_postgres_data`). |
+| `docker system prune -a` | Limpiar contenedores, imágenes y redes no usados (no borra volúmenes por defecto). |
+| `docker system prune -a --volumes` | Lo mismo que el anterior **incluyendo volúmenes** (cuidado: borra datos persistentes de todos los proyectos). |
+
+> **Nota:** Si el volumen de `mas-postgres` ya existía sin los datos de `banco` (por ejemplo, tras un `docker compose down` sin borrar volúmenes seguido de un cambio en el schema), repoblar manualmente con:
+>
+> ```bash
+> python -m src.database.postgres.setup_db
+> ```
 
 ### 4.4. Instalar dependencias de Python
 
