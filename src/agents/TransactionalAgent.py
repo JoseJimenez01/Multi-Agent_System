@@ -35,7 +35,7 @@ def _build_anthropic_tools(mcp_tools: list) -> list[dict]:
     tools = []
     for tool in mcp_tools:
         name = tool.name
-        schema = dict(tool.input_schema)
+        schema = dict(tool.inputSchema)
 
         if name in required_overrides:
             merged = list(schema.get("required", []))
@@ -71,7 +71,7 @@ def _get_mcp_tools() -> list:
 async def _fetch_mcp_tools() -> list:
     server_params = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "src.mcp.server.server"],
+        args=["-m", "src.mcp_server.server.server"],
         env={**os.environ, "PYTHONPATH": _PROJECT_ROOT},
     )
     async with stdio_client(server_params) as (read, write):
@@ -82,6 +82,8 @@ async def _fetch_mcp_tools() -> list:
 
 
 _ANTHROPIC_TOOLS = _build_anthropic_tools(_get_mcp_tools())
+
+MAX_TOOL_ROUNDS = 5
 
 
 class TransactionalAgent(BaseAgent):
@@ -140,56 +142,61 @@ class TransactionalAgent(BaseAgent):
     def run(self, prompt: str, context: str | None = None, history: list[dict] | None = None) -> str:
         system_prompt = self._build_system_prompt(context)
         messages = self._build_messages(history, prompt)
+        return asyncio.run(self._run_tool_loop(system_prompt, messages))
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=messages,
-            tools=_ANTHROPIC_TOOLS,
-            temperature=0.3,
-        )
-
-        tool_blocks = [b for b in response.content if b.type == "tool_use"]
-        if not tool_blocks:
-            return response.content[0].text
-
-        tool_results = asyncio.run(self._execute_mcp_tools(tool_blocks))
-
-        messages.append({"role": "assistant", "content": response.content})
-        messages.append({
-            "role": "user",
-            "content": [{"type": "tool_result", **tr} for tr in tool_results],
-        })
-
-        final = self.client.messages.create(
-            model=self.model,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=messages,
-            temperature=0.3,
-        )
-        return final.content[0].text
-
-    async def _execute_mcp_tools(self, tool_blocks: list) -> list[dict]:
+    async def _run_tool_loop(self, system_prompt: str, messages: list[dict]) -> str:
         server_params = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "src.mcp.server.server"],
+            args=["-m", "src.mcp_server.server.server"],
             env={**os.environ, "PYTHONPATH": _PROJECT_ROOT},
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                results = []
-                for block in tool_blocks:
-                    try:
-                        result = await session.call_tool(block.name, dict(block.input))
-                        if hasattr(result, 'content') and result.content:
-                            parts = [item.text for item in result.content if hasattr(item, 'text')]
-                            content = " ".join(parts) if parts else str(result)
-                        else:
-                            content = str(result)
-                        results.append({"tool_use_id": block.id, "content": content})
-                    except Exception as e:
-                        results.append({"tool_use_id": block.id, "content": f"Error: {e}"})
-                return results
+
+                for _ in range(MAX_TOOL_ROUNDS):
+                    response = self.client.messages.create(
+                        model=self.model,
+                        max_tokens=2048,
+                        system=system_prompt,
+                        messages=messages,
+                        tools=_ANTHROPIC_TOOLS,
+                        temperature=0.3,
+                    )
+
+                    tool_blocks = [b for b in response.content if b.type == "tool_use"]
+                    if not tool_blocks:
+                        text_parts = [b.text for b in response.content if hasattr(b, "text")]
+                        return " ".join(text_parts) if text_parts else str(response.content[0])
+
+                    messages.append({"role": "assistant", "content": response.content})
+                    tool_results = await self._execute_mcp_tools_with_session(session, tool_blocks)
+                    messages.append({
+                        "role": "user",
+                        "content": [{"type": "tool_result", **tr} for tr in tool_results],
+                    })
+
+                final = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=2048,
+                    system=system_prompt,
+                    messages=messages,
+                    temperature=0.3,
+                )
+                text_parts = [b.text for b in final.content if hasattr(b, "text")]
+                return " ".join(text_parts) if text_parts else str(final.content[0])
+
+    async def _execute_mcp_tools_with_session(self, session, tool_blocks: list) -> list[dict]:
+        results = []
+        for block in tool_blocks:
+            try:
+                result = await session.call_tool(block.name, dict(block.input))
+                if hasattr(result, 'content') and result.content:
+                    parts = [item.text for item in result.content if hasattr(item, 'text')]
+                    content = " ".join(parts) if parts else str(result)
+                else:
+                    content = str(result)
+                results.append({"tool_use_id": block.id, "content": content})
+            except Exception as e:
+                results.append({"tool_use_id": block.id, "content": f"Error: {e}"})
+        return results

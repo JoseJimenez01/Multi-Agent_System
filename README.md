@@ -134,7 +134,26 @@ python -m src.preprocess.ingest --strategy all
 (esto crea `course_notes_v1_sentences` y `course_notes_v2_fixed`, separadas
 de `course_notes`).
 
-### 4.6. Levantar la aplicación
+### 4.6. Cargar los datos del banco (seed)
+
+El schema y los datos ficticios del banco (clientes, cuentas, transacciones,
+casos de fraude) viven en `src/database/postgres/banco_schema.sql` y
+`banco_seed.sql`. El contenedor `mas-postgres` los carga automáticamente la
+primera vez que se inicializa su volumen. Si el volumen ya existía sin los
+datos (por ejemplo, tras un `docker compose down` sin borrar volúmenes
+seguido de un cambio en el schema), hay que repoblar manualmente con
+`setup_db.py`, que ejecuta ambos archivos en orden:
+
+```bash
+python -m src.database.postgres.setup_db
+```
+
+Requiere el contenedor `mas-postgres` corriendo (puerto 5434 por defecto) y
+lee `DATABASE_URL` desde `.env`. Al terminar, la base de datos queda
+inicializada con el schema `banco` y los datos de prueba listos para que el
+`TransactionalAgent` los consulte a través del MCP Server.
+
+### 4.7. Levantar la aplicación
 
 ```bash
 streamlit run src/app.py
@@ -144,11 +163,12 @@ La app queda disponible en `http://localhost:8501`.
 
 ## 5. Decisiones de diseño notables
 
-- **El "MCP Server" es un módulo Python in-process, no un servidor separado.**
-  `src/mcp/server/server.py` define 8 herramientas con el decorador
-  `@mcp.tool()` de `FastMCP`, pero el archivo nunca llama a `mcp.run()`: no
-  hay ningún proceso MCP escuchando por stdio/HTTP. `TransactionalAgent`
-  importa y ejecuta esas funciones directamente como funciones Python.
+- **El "MCP Server" ahora corre como un subproceso stdio separado.**
+  `src/mcp_server/server/server.py` define 8 herramientas con el decorador
+  `@mcp.tool()` de `FastMCP`. `TransactionalAgent` lo lanza como un proceso
+  aparte vía `stdio_client` con `StdioServerParameters`, usando el SDK `mcp`
+  oficial (`ClientSession`). El paquete local se llama `mcp_server` (no
+  `mcp`) para evitar colisión de nombres con el paquete `mcp` de PyPI.
   Decisión pragmática para el alcance de este proyecto — evita la
   complejidad de correr un proceso cliente/servidor MCP separado, sin perder
   el patrón de herramientas controladas (sin SQL libre) que pide la
@@ -183,13 +203,15 @@ La app queda disponible en `http://localhost:8501`.
   conversación posterior a una pregunta de RAG quede "pegada" a esa
   categoría.
 
-- **Limitación conocida:** `TransactionalAgent.run()` solo soporta una ronda
-  de tool-calling. Tareas que requieren llamadas encadenadas (por ejemplo,
-  buscar la transacción de mayor monto y *después* crear un caso de fraude
-  sobre esa transacción específica) pueden quedar incompletas: el agente
-  describe en texto el siguiente paso pero no tiene herramientas
-  disponibles en el segundo turno para ejecutarlo. Documentado, no
-  corregido todavía.
+- **`TransactionalAgent` soporta múltiples rondas de tool-calling en una
+  sola sesión MCP.** `run()` abre una única sesión MCP (un solo subproceso
+  del servidor) y itera hasta `MAX_TOOL_ROUNDS=5` veces: en cada ronda
+  pasa las herramientas al LLM, ejecuta las que solicite, y vuelve a
+  preguntar. Esto permite flujos encadenados (por ejemplo, buscar
+  transacciones y *después* crear un caso de fraude sobre una específica)
+  sin spawnear un subproceso nuevo por ronda. Si se agotan las rondas, se
+  hace una llamada final sin herramientas para forzar una respuesta en
+  texto.
 
 ## 6. Evaluación experimental
 

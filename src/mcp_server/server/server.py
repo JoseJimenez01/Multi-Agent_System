@@ -13,8 +13,6 @@ logger = logging.getLogger("mcp_server")
 mcp = FastMCP(
     name="Multi-Agent_System_MCPServer",
     instructions="MCP server for querying the banking database (schema: banco)",
-    host="127.0.0.1",
-    port=8000,
 )
 
 db = PostgresDB(settings.database_url)
