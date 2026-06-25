@@ -1,103 +1,87 @@
-import inspect
-from typing import Any, get_type_hints
+import asyncio
+import os
+import sys
+from pathlib import Path
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 from .base_agent import BaseAgent
 from src.config import settings
-from src.mcp.server.server import (
-    get_transaction_by_id,
-    get_transactions,
-    search_transactions,
-    get_customer_risk_summary,
-    get_customers,
-    get_recent_flagged_transactions,
-    create_fraud_case,
-    get_fraud_cases,
-)
 
-_TYPE_MAP = {
-    int: "integer",
-    str: "string",
-    float: "number",
-    bool: "boolean",
-    list: "array",
-    dict: "object",
-    type(None): "null",
-}
-
-_TOOL_FUNCTIONS = {
-    "get_transaction_by_id": get_transaction_by_id,
-    "get_transactions": get_transactions,
-    "search_transactions": search_transactions,
-    "get_customer_risk_summary": get_customer_risk_summary,
-    "get_customers": get_customers,
-    "get_recent_flagged_transactions": get_recent_flagged_transactions,
-    "create_fraud_case": create_fraud_case,
-    "get_fraud_cases": get_fraud_cases,
-}
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
 
-def _build_anthropic_tools() -> list[dict]:
-    # Estos parámetros tienen default en Python (para no romper la firma de las
-    # funciones del MCP), pero server.py los rechaza en runtime si faltan. Se
-    # fuerzan acá como "required" en el schema que ve el LLM para que los
-    # incluya desde el primer intento, en vez de fallar y reintentar.
+def _build_anthropic_tools(mcp_tools: list) -> list[dict]:
     required_overrides = {
         "search_transactions": ["fecha_desde", "fecha_hasta", "justificacion"],
         "create_fraud_case": ["justificacion"],
     }
     description_overrides = {
         "search_transactions": {
-            "fecha_desde": "Requerido. Formato YYYY-MM-DD. El MCP Server rechaza búsquedas históricas sin rango de fechas.",
-            "fecha_hasta": "Requerido. Formato YYYY-MM-DD. El MCP Server rechaza búsquedas históricas sin rango de fechas.",
-            "justificacion": "Requerido. Mínimo 10 caracteres. Explica el motivo de la consulta.",
+            "fecha_desde": ("Requerido. Formato YYYY-MM-DD. "
+                            "El MCP Server rechaza búsquedas históricas sin rango de fechas."),
+            "fecha_hasta": ("Requerido. Formato YYYY-MM-DD. "
+                            "El MCP Server rechaza búsquedas históricas sin rango de fechas."),
+            "justificacion": ("Requerido. Mínimo 10 caracteres. "
+                              "Explica el motivo de la consulta."),
         },
         "create_fraud_case": {
-            "justificacion": "Requerido. Mínimo 10 caracteres. Explica el motivo de la consulta.",
+            "justificacion": ("Requerido. Mínimo 10 caracteres. "
+                              "Explica el motivo de la consulta."),
         },
     }
 
     tools = []
-    for name, fn in _TOOL_FUNCTIONS.items():
-        sig = inspect.signature(fn)
-        hints = get_type_hints(fn)
-        properties = {}
-        required = []
-        doc = (fn.__doc__ or "").strip()
+    for tool in mcp_tools:
+        name = tool.name
+        schema = dict(tool.input_schema)
 
-        for param_name, param in sig.parameters.items():
-            if param_name == "ctx":
-                continue
-            param_type = hints.get(param_name, str)
-            json_type = _TYPE_MAP.get(param_type, "string")
+        if name in required_overrides:
+            merged = list(schema.get("required", []))
+            for p in required_overrides[name]:
+                if p not in merged:
+                    merged.append(p)
+            schema["required"] = merged
 
-            prop = {"type": json_type}
-
-            description = description_overrides.get(name, {}).get(param_name)
-            if description:
-                prop["description"] = description
-
-            is_required = (
-                param.default is inspect.Parameter.empty
-                or param_name in required_overrides.get(name, [])
-            )
-            if is_required:
-                required.append(param_name)
-
-            properties[param_name] = prop
+        if name in description_overrides:
+            props = schema.get("properties", {})
+            for param_name, desc in description_overrides[name].items():
+                if param_name in props:
+                    props[param_name] = {**props[param_name], "description": desc}
 
         tools.append({
             "name": name,
-            "description": doc,
-            "input_schema": {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-            },
+            "description": tool.description or "",
+            "input_schema": schema,
         })
     return tools
 
 
-_ANTHROPIC_TOOLS = _build_anthropic_tools()
+_MCP_TOOLS_CACHE: list | None = None
+
+
+def _get_mcp_tools() -> list:
+    global _MCP_TOOLS_CACHE
+    if _MCP_TOOLS_CACHE is None:
+        _MCP_TOOLS_CACHE = asyncio.run(_fetch_mcp_tools())
+    return _MCP_TOOLS_CACHE
+
+
+async def _fetch_mcp_tools() -> list:
+    server_params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "src.mcp.server.server"],
+        env={**os.environ, "PYTHONPATH": _PROJECT_ROOT},
+    )
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.list_tools()
+            return result.tools
+
+
+_ANTHROPIC_TOOLS = _build_anthropic_tools(_get_mcp_tools())
 
 
 class TransactionalAgent(BaseAgent):
@@ -166,21 +150,11 @@ class TransactionalAgent(BaseAgent):
             temperature=0.3,
         )
 
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                fn = _TOOL_FUNCTIONS.get(block.name)
-                if fn is None:
-                    tool_results.append({"tool_use_id": block.id, "content": f"Unknown tool: {block.name}"})
-                    continue
-                try:
-                    result = fn(**dict(block.input))
-                    tool_results.append({"tool_use_id": block.id, "content": str(result)})
-                except Exception as e:
-                    tool_results.append({"tool_use_id": block.id, "content": f"Error: {e}"})
-
-        if not tool_results:
+        tool_blocks = [b for b in response.content if b.type == "tool_use"]
+        if not tool_blocks:
             return response.content[0].text
+
+        tool_results = asyncio.run(self._execute_mcp_tools(tool_blocks))
 
         messages.append({"role": "assistant", "content": response.content})
         messages.append({
@@ -196,3 +170,26 @@ class TransactionalAgent(BaseAgent):
             temperature=0.3,
         )
         return final.content[0].text
+
+    async def _execute_mcp_tools(self, tool_blocks: list) -> list[dict]:
+        server_params = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "src.mcp.server.server"],
+            env={**os.environ, "PYTHONPATH": _PROJECT_ROOT},
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                results = []
+                for block in tool_blocks:
+                    try:
+                        result = await session.call_tool(block.name, dict(block.input))
+                        if hasattr(result, 'content') and result.content:
+                            parts = [item.text for item in result.content if hasattr(item, 'text')]
+                            content = " ".join(parts) if parts else str(result)
+                        else:
+                            content = str(result)
+                        results.append({"tool_use_id": block.id, "content": content})
+                    except Exception as e:
+                        results.append({"tool_use_id": block.id, "content": f"Error: {e}"})
+                return results

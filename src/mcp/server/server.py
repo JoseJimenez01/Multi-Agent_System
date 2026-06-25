@@ -1,5 +1,5 @@
 from typing import Any
-from mcp_server.server import FastMCP, Context
+from fastmcp import FastMCP, Context
 from src.config import settings
 from src.database.postgres.postgres import PostgresDB
 import logging
@@ -254,3 +254,13 @@ def get_fraud_cases(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         ORDER BY cr.fecha_apertura DESC
         LIMIT %s OFFSET %s
     """, (limit, offset))
+
+
+def run() -> None:
+    """Start the MCP server as a standalone process via stdio transport."""
+    logger.info("Starting MCP server on stdio transport")
+    mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    run()
