@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_dimension: int = 1536
-
+    openai_judge_model: str = "gpt-4o-mini"
+    
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
