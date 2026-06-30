@@ -29,9 +29,9 @@ Langfuse (entrada del usuario, agente usado, fragmentos recuperados,
 llamadas al modelo, latencia, costo y errores).
 
 Tecnologías principales: Python 3.13, Anthropic Claude (LLM), OpenAI
-(embeddings), Qdrant (base vectorial), PostgreSQL (datos transaccionales y
-memoria histórica), Langfuse self-hosted (observabilidad), Streamlit
-(interfaz web), Docker Compose (infraestructura).
+(embeddings y juez de evaluación semántica), Qdrant (base vectorial),
+PostgreSQL (datos transaccionales y memoria histórica), Langfuse self-hosted
+(observabilidad), Streamlit (interfaz web), Docker Compose (infraestructura).
 
 ## 2. Arquitectura: agentes implementados
 
@@ -247,11 +247,41 @@ python -m eval.run_eval_set --only-pending
 ```
 
 Resultados en `eval/eval_results.json` (detalle por pregunta: agente usado,
-latencia, si usó contexto fundamentado, coincidencia con el criterio de
-éxito) y `eval/eval_summary.csv` (resumen por categoría). El chequeo de
-contenido para preguntas factuales/comparación es un proxy heurístico de
-coincidencia de palabras clave, no una verificación semántica — pensado
-para priorizar revisión manual.
+latencia, si usó contexto fundamentado, veredicto heurístico, veredicto del
+juez LLM, resultado final combinado) y `eval/eval_summary.csv` (resumen por
+categoría con `paso_heuristica` y `paso_final` separados).
+
+### 6.1. LLM-as-a-judge
+
+`eval/llm_judge.py` implementa un evaluador semántico que complementa la
+heurística `keyword_match_ratio`: en vez de contar palabras clave, le
+pregunta a un LLM si la respuesta del agente es correcta **por significado**.
+Útil para fórmulas matemáticas en notación distinta, respuestas dinámicas
+con datos reales (transaccionales) y criterios descriptivos que la heurística
+subestima.
+
+**Modelo**: OpenAI `gpt-4o-mini` a temperatura 0 con `response_format:
+json_object` (configurable con `OPENAI_JUDGE_MODEL` en `.env`).
+
+**Dos modos**:
+
+| Modo | Referencia usada | Categorías |
+| --- | --- | --- |
+| `contenido` | `respuesta_esperada` (respuesta modelo) | `factual`, `comparacion` |
+| `rubrica` | `criterio_de_exito` (comportamiento esperado) | `transactional` |
+
+Para `fuera_de_alcance` y `web_search` el chequeo es estructural y el juez
+no se invoca (`llm_judge_veredicto: null`).
+
+**Lógica de combinación** (`paso_final`): si la heurística aprueba → aprueba;
+si la heurística falla → el juez decide (rescata falsos negativos por
+fraseo/notación diferente); si el juez lanza un error de API → se usa el
+resultado heurístico tal cual. Esto evita que un error de red invalide
+toda la corrida.
+
+Cada resultado en `eval_results.json` incluye los campos:
+`llm_judge_veredicto` (bool o null), `llm_judge_justificacion` (1-2 frases)
+y `paso_final` (resultado combinado).
 
 `eval/compare_chunking.py` corre las 10 preguntas factuales contra las dos
 colecciones de chunking (`course_notes_v1_sentences` vs
@@ -270,10 +300,11 @@ concluir cuál estrategia es mejor.
 │   └── clickhouse/                # configuración de ClickHouse para Langfuse
 ├── eval/
 │   ├── questions.json             # 35 preguntas de evaluación, 6 categorías
-│   ├── run_eval_set.py            # corre el set contra el Orquestador real
+│   ├── run_eval_set.py            # corre el set contra el Orquestador real (incluye juez LLM)
+│   ├── llm_judge.py               # LLM-as-a-judge: evaluación semántica con OpenAI gpt-4o-mini
 │   ├── compare_chunking.py        # comparación experimental de las 2 estrategias de chunking
-│   ├── eval_results.json          # resultados detallados de la última corrida
-│   ├── eval_summary.csv           # resumen por categoría
+│   ├── eval_results.json          # resultados detallados (heurística + juez LLM + paso_final)
+│   ├── eval_summary.csv           # resumen por categoría (paso_heuristica y paso_final)
 │   └── chunking_comparison_*.json/.csv  # resultados de la comparación de chunking
 ├── src/
 │   ├── agents/
