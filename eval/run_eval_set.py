@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.orchestrator.router import Orchestrator, OUT_OF_SCOPE_MESSAGE, OUT_OF_SCOPE
+from eval.llm_judge import judge_answer
 
 QUESTIONS_PATH = Path(__file__).resolve().parent / "questions.json"
 RESULTS_PATH = Path(__file__).resolve().parent / "eval_results.json"
@@ -63,6 +64,17 @@ def keyword_match_ratio(respuesta: str, esperada: str) -> float:
     return round(found / len(expected_kw), 3)
 
 
+def _combine_paso_final(paso_criterio: bool, llm_judge_veredicto: bool | None) -> bool:
+    """Combina la heurística con el juez LLM: la heurística manda si aprobó;
+    si falló, el juez puede rescatar un falso negativo; si el juez no aplica
+    (None), se respeta la heurística tal cual."""
+    if paso_criterio:
+        return True
+    if llm_judge_veredicto is None:
+        return paso_criterio
+    return bool(llm_judge_veredicto)
+
+
 def run_single_turn(orchestrator: Orchestrator, prompt: str, session_id: str, history: list[dict] | None = None) -> dict:
     start = time.perf_counter()
     response = orchestrator.route(prompt, session_id, history=history)
@@ -80,11 +92,20 @@ def eval_factual_or_comparacion(orchestrator: Orchestrator, q: dict) -> dict:
     session_id = f"eval-{q['id']}-{uuid.uuid4().hex[:8]}"
     turn = run_single_turn(orchestrator, q["pregunta"], session_id)
     ratio = keyword_match_ratio(turn["respuesta"], q["respuesta_esperada"])
+    routing_correcto = turn["agente_obtenido"] == q["agente_esperado"]
+    paso_criterio = routing_correcto and ratio >= 0.5
+
+    juicio = judge_answer(q["pregunta"], q["respuesta_esperada"], turn["respuesta"], modo="contenido")
+
     return {
         **q,
         **turn,
-        "routing_correcto": turn["agente_obtenido"] == q["agente_esperado"],
+        "routing_correcto": routing_correcto,
         "keyword_match_ratio": ratio,
+        "paso_criterio": paso_criterio,
+        "llm_judge_veredicto": juicio["veredicto"],
+        "llm_judge_justificacion": juicio["justificacion"],
+        "paso_final": _combine_paso_final(paso_criterio, juicio["veredicto"]),
     }
 
 
@@ -113,24 +134,36 @@ def eval_fuera_de_alcance(orchestrator: Orchestrator, q: dict) -> dict:
 
     clasificacion_correcta = turn["agente_obtenido"] == OUT_OF_SCOPE
     mensaje_exacto = turn["respuesta"] == OUT_OF_SCOPE_MESSAGE
+    paso_criterio = clasificacion_correcta and mensaje_exacto
 
     return {
         **q,
         **turn,
         "routing_correcto": clasificacion_correcta,
         "mensaje_fijo_exacto": mensaje_exacto,
-        "paso_criterio": clasificacion_correcta and mensaje_exacto,
+        "paso_criterio": paso_criterio,
+        "llm_judge_veredicto": None,
+        "llm_judge_justificacion": None,
+        "paso_final": paso_criterio,
     }
 
 
 def eval_web_search(orchestrator: Orchestrator, q: dict) -> dict:
     session_id = f"eval-{q['id']}-{uuid.uuid4().hex[:8]}"
     turn = run_single_turn(orchestrator, q["pregunta"], session_id)
+    routing_correcto = turn["agente_obtenido"] == q["agente_esperado"]
+    busco_y_cito_fuente = turn["context_used"] and ("http" in turn["respuesta"] or "Fuentes:" in turn["respuesta"])
+    paso_criterio = routing_correcto and busco_y_cito_fuente
+
     return {
         **q,
         **turn,
-        "routing_correcto": turn["agente_obtenido"] == q["agente_esperado"],
-        "busco_y_cito_fuente": turn["context_used"] and ("http" in turn["respuesta"] or "Fuentes:" in turn["respuesta"]),
+        "routing_correcto": routing_correcto,
+        "busco_y_cito_fuente": busco_y_cito_fuente,
+        "paso_criterio": paso_criterio,
+        "llm_judge_veredicto": None,
+        "llm_judge_justificacion": None,
+        "paso_final": paso_criterio,
     }
 
 
@@ -138,12 +171,21 @@ def eval_transactional(orchestrator: Orchestrator, q: dict) -> dict:
     session_id = f"eval-{q['id']}-{uuid.uuid4().hex[:8]}"
     turn = run_single_turn(orchestrator, q["pregunta"], session_id)
     ratio = keyword_match_ratio(turn["respuesta"], q.get("criterio_de_exito", ""))
+    routing_correcto = turn["agente_obtenido"] == q["agente_esperado"]
+    paso_criterio = routing_correcto and ratio >= 0.5
+
+    juicio = judge_answer(q["pregunta"], q.get("criterio_de_exito", ""), turn["respuesta"], modo="rubrica")
+
     q_sin_pending = {k: v for k, v in q.items() if k != "pending_mcp"}
     return {
         **q_sin_pending,
         **turn,
-        "routing_correcto": turn["agente_obtenido"] == q["agente_esperado"],
+        "routing_correcto": routing_correcto,
         "keyword_match_ratio": ratio,
+        "paso_criterio": paso_criterio,
+        "llm_judge_veredicto": juicio["veredicto"],
+        "llm_judge_justificacion": juicio["justificacion"],
+        "paso_final": _combine_paso_final(paso_criterio, juicio["veredicto"]),
     }
 
 
@@ -212,6 +254,8 @@ def main():
             results.append(eval_fuera_de_alcance(orchestrator, q))
         elif q["categoria"] == "web_search":
             results.append(eval_web_search(orchestrator, q))
+        elif q["categoria"] == "transactional":
+            results.append(eval_transactional(orchestrator, q))
         else:
             print(f"  categoria desconocida: {q['categoria']}, se omite")
 
@@ -228,7 +272,7 @@ def main():
 def write_summary(results: list[dict], questions: list[dict]):
     from collections import defaultdict
 
-    by_cat = defaultdict(lambda: {"total": 0, "paso": 0, "agentes": defaultdict(int)})
+    by_cat = defaultdict(lambda: {"total": 0, "paso_heuristica": 0, "paso_final": 0, "agentes": defaultdict(int)})
 
     for r in results:
         cat = r["categoria"]
@@ -238,29 +282,42 @@ def write_summary(results: list[dict], questions: list[dict]):
             by_cat[cat]["agentes"]["pending_mcp"] += 1
             continue
 
-        if cat == "fuera_de_alcance":
-            paso = r.get("paso_criterio", False)
-            agente = r.get("agente_obtenido")
-        elif cat == "seguimiento_conversacional":
-            paso = r.get("routing_correcto", False)
+        if cat == "seguimiento_conversacional":
+            # No tiene paso_criterio/paso_final propios (no se invoca al juez): el
+            # routing es el único criterio, así que ambas tasas coinciden.
+            paso_heuristica = r.get("routing_correcto", False)
+            paso_final = paso_heuristica
             agente = r["turno_1"]["agente_obtenido"] + " -> " + r["turno_2"]["agente_obtenido"]
-        elif cat == "web_search":
-            paso = r.get("routing_correcto", False) and r.get("busco_y_cito_fuente", False)
-            agente = r.get("agente_obtenido")
-        else:  # factual, comparacion
-            paso = r.get("routing_correcto", False) and r.get("keyword_match_ratio", 0) >= 0.5
+        else:
+            paso_heuristica = r.get("paso_criterio", False)
+            paso_final = r.get("paso_final", paso_heuristica)
             agente = r.get("agente_obtenido")
 
-        if paso:
-            by_cat[cat]["paso"] += 1
+        if paso_heuristica:
+            by_cat[cat]["paso_heuristica"] += 1
+        if paso_final:
+            by_cat[cat]["paso_final"] += 1
         by_cat[cat]["agentes"][agente] += 1
 
     with open(SUMMARY_CSV_PATH, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["categoria", "total_preguntas", "paso_criterio", "agentes_usados"])
+        writer.writerow([
+            "categoria", "total_preguntas",
+            "aprobadas_heuristica", "aprobadas_final",
+            "tasa_heuristica", "tasa_final",
+            "agentes_usados",
+        ])
         for cat, data in by_cat.items():
+            total = data["total"]
+            tasa_heuristica = round(data["paso_heuristica"] / total, 3) if total else 0.0
+            tasa_final = round(data["paso_final"] / total, 3) if total else 0.0
             agentes_str = "; ".join(f"{a}={n}" for a, n in data["agentes"].items())
-            writer.writerow([cat, data["total"], data["paso"], agentes_str])
+            writer.writerow([
+                cat, total,
+                data["paso_heuristica"], data["paso_final"],
+                tasa_heuristica, tasa_final,
+                agentes_str,
+            ])
 
     print(f"Tabla resumen -> {SUMMARY_CSV_PATH}")
 
